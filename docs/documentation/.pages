@@ -1,6 +1,7 @@
 title: Documentation
 nav:
     - Training: training.md
+    - ReasonIR ColBERT-Zero: reasonir-colbert-zero.md
     - Datasets: datasets.md
     - Retrieval: retrieval.md
     - Evaluation: evaluation.md

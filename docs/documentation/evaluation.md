@@ -7,6 +7,11 @@ This guide demonstrates an end-to-end pipeline to evaluate the performance of th
 ```python
 from pylate import evaluation, indexes, models, retrieve
 
+
+def resolve_prompt_name(model, role):
+    prompts = model.prompts or {}
+    return role if role in prompts else None
+
 # Step 1: Initialize the ColBERT model
 
 dataset = "scifact" # Choose the dataset you want to evaluate
@@ -14,6 +19,8 @@ model = models.ColBERT(
     model_name_or_path="lightonai/GTE-ModernColBERT-v1",
     device="cuda" # "cpu" or "cuda" or "mps"
 )
+query_prompt_name = resolve_prompt_name(model, "query")
+document_prompt_name = resolve_prompt_name(model, "document")
 
 # Step 2: Create a Voyager index
 index = indexes.Voyager(
@@ -34,6 +41,7 @@ documents_embeddings = model.encode(
     batch_size=32,
     is_query=False,  # Indicate that these are documents
     show_progress_bar=True,
+    prompt_name=document_prompt_name,
 )
 
 # Step 5: Add document embeddings to the index
@@ -48,6 +56,7 @@ queries_embeddings = model.encode(
     batch_size=32,
     is_query=True,  # Indicate that these are queries
     show_progress_bar=True,
+    prompt_name=query_prompt_name,
 )
 
 # Step 7: Retrieve top-k documents
@@ -98,9 +107,11 @@ The output is a dictionary containing various evaluation metrics. Here’s a sam
 ???+ info
     1. is_query flag: Always set is_query=True when encoding queries and is_query=False when encoding documents. This ensures the model applies the correct prefixes for queries and documents.
 
-    2. Evaluation metrics: The pipeline supports a wide range of evaluation metrics, including NDCG, hits, MAP, recall, and precision, with different cutoff points.
+    2. Prompt-sensitive checkpoints: Some checkpoints, such as `lightonai/ColBERT-Zero`, also require `prompt_name="query"` for queries and `prompt_name="document"` for documents. If the checkpoint exposes these prompts in `config_sentence_transformers.json`, pass them during evaluation or retrieval quality will degrade silently.
 
-    3. Relevance judgments (qrels): The qrels are used to calculate how well the retrieved documents match the ground truth.
+    3. Evaluation metrics: The pipeline supports a wide range of evaluation metrics, including NDCG, hits, MAP, recall, and precision, with different cutoff points.
+
+    4. Relevance judgments (qrels): The qrels are used to calculate how well the retrieved documents match the ground truth.
 
 ### BEIR datasets
 
@@ -153,6 +164,32 @@ documents, queries, qrels = evaluation.load_custom_dataset(
     "custom_dataset", split="dev"
 )
 ```
+
+### BRIGHT reasoning retrieval
+
+For BRIGHT-style reasoning retrieval with exact MaxSim scoring and BRIGHT `excluded_ids`, use:
+
+```bash
+uv run python examples/evaluation/bright_reasonir.py \
+    --model_name_or_path /path/to/model \
+    --reasoning none \
+    --query_batch_size 16 \
+    --query_encode_batch_size 32 \
+    --document_batch_size 128 \
+    --corpus_chunk_size 1024 \
+    --top_k 1000 \
+    --cache_dir /tmp/pylate-bright-cache \
+    --output_json output/bright-results.json
+```
+
+Use `--reasoning gpt4 --use_reason_moderncolbert_gpt4_lengths` to match the GPT-4 reasoning-trace setting reported in the `Reason-ModernColBERT` model card.
+
+The BRIGHT runner:
+
+- preserves prompt-aligned query/document encoding for prompt-sensitive checkpoints such as `ColBERT-Zero`
+- caches document embeddings per model and task
+- resumes from `--output_json` and skips already-finished tasks on rerun
+- accepts task subsets via `--tasks biology,earth_science,...`
 
 
 ### Metrics

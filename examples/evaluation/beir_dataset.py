@@ -3,8 +3,16 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from pylate import evaluation, indexes, models, retrieve
+
+
+def resolve_prompt_name(model: models.ColBERT, role: str) -> str | None:
+    """Return the prompt name for prompt-sensitive checkpoints when available."""
+    prompts = model.prompts or {}
+    return role if role in prompts else None
+
 
 if __name__ == "__main__":
     query_len = {
@@ -44,14 +52,53 @@ if __name__ == "__main__":
         default="nfcorpus",
         help="Name of the dataset to evaluate on (default: 'fiqa')",
     )
+    parser.add_argument(
+        "--model_name_or_path",
+        type=str,
+        default="lightonai/GTE-ModernColBERT-v1",
+        help="Model path or HF identifier to evaluate.",
+    )
+    parser.add_argument(
+        "--document_length",
+        type=int,
+        default=None,
+        help="Optional document length override.",
+    )
+    parser.add_argument(
+        "--query_length",
+        type=int,
+        default=None,
+        help="Optional query length override.",
+    )
+    parser.add_argument(
+        "--document_batch_size",
+        type=int,
+        default=128,
+        help="Document encoding batch size.",
+    )
+    parser.add_argument(
+        "--query_batch_size",
+        type=int,
+        default=32,
+        help="Query encoding batch size.",
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=20,
+        help="Top-k documents to retrieve for evaluation.",
+    )
     args = parser.parse_args()
     dataset_name = args.dataset_name
-    model_name = "lightonai/GTE-ModernColBERT-v1"
+    model_name = args.model_name_or_path
     model = models.ColBERT(
         model_name_or_path=model_name,
-        document_length=300,
-        query_length=query_len.get(dataset_name),
+        document_length=args.document_length,
+        query_length=args.query_length or query_len.get(dataset_name),
+        local_files_only=Path(model_name).exists(),
     )
+    query_prompt_name = resolve_prompt_name(model=model, role="query")
+    document_prompt_name = resolve_prompt_name(model=model, role="document")
 
     if "cqadupstack" in dataset_name:
         # Download dataset if not already downloaded
@@ -81,9 +128,10 @@ if __name__ == "__main__":
 
     documents_embeddings = model.encode(
         sentences=[document["text"] for document in documents],
-        batch_size=2000,
+        batch_size=args.document_batch_size,
         is_query=False,
         show_progress_bar=True,
+        prompt_name=document_prompt_name,
     )
 
     index.add_documents(
@@ -94,10 +142,11 @@ if __name__ == "__main__":
         sentences=list(queries.values()),
         is_query=True,
         show_progress_bar=True,
-        batch_size=32,
+        batch_size=args.query_batch_size,
+        prompt_name=query_prompt_name,
     )
 
-    scores = retriever.retrieve(queries_embeddings=queries_embeddings, k=20)
+    scores = retriever.retrieve(queries_embeddings=queries_embeddings, k=args.k)
 
     # Remove query_id from scores, needed for FiQA dataset
     for (query_id, query), query_scores in zip(queries.items(), scores):
