@@ -4,6 +4,8 @@ import argparse
 import heapq
 import json
 import re
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +180,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Optional path to write the full BRIGHT result JSON.",
+    )
+    parser.add_argument(
+        "--cleanup-document-cache",
+        action="store_true",
+        help=(
+            "Delete the model-specific BRIGHT document embedding cache after the eval "
+            "run completes."
+        ),
     )
     parser.add_argument(
         "--report-to",
@@ -483,6 +493,35 @@ def get_document_cache_dir(
         / task
         / f"doclen_{document_length}"
         / f"cachechunk_{document_cache_chunk_size}"
+    )
+
+
+def get_model_document_cache_root(
+    cache_dir: str,
+    model_name_or_path: str,
+) -> Path:
+    return Path(cache_dir) / "bright_doc_emb" / slugify(model_name_or_path)
+
+
+def cleanup_model_document_cache(
+    cache_dir: str,
+    model_name_or_path: str,
+) -> None:
+    cache_root = get_model_document_cache_root(
+        cache_dir=cache_dir,
+        model_name_or_path=model_name_or_path,
+    )
+    if not cache_root.exists():
+        return
+    shutil.rmtree(cache_root)
+    print(
+        json.dumps(
+            {
+                "cache_cleanup": "removed",
+                "cache_root": str(cache_root),
+            }
+        ),
+        file=sys.stderr,
     )
 
 
@@ -846,6 +885,11 @@ def main() -> None:
     finally:
         if wandb_run is not None:
             wandb_run.finish()
+        if args.cleanup_document_cache:
+            cleanup_model_document_cache(
+                cache_dir=args.cache_dir,
+                model_name_or_path=args.model_name_or_path,
+            )
 
 
 if __name__ == "__main__":

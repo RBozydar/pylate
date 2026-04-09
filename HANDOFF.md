@@ -17,6 +17,7 @@ The relevant work in this branch is:
 - BRIGHT evaluator matching the ReasonIR harness semantics, but using PyLate MaxSim:
   - [`examples/evaluation/bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py)
 - runbook/docs:
+  - [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
   - [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md)
   - [`docs/documentation/evaluation.md`](/home/rbw/repo/pylate/docs/documentation/evaluation.md)
 
@@ -56,10 +57,12 @@ On the new machine, pass explicit overrides:
     - `--report-to wandb`
     - `--wandb-project ColBERT-Zero`
     - `--wandb-entity rbw`
+    - `--cleanup-document-cache` to remove model-specific BRIGHT doc shards after eval
   - inspect recent W&B runs from the terminal with:
     - `uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10`
-  - evaluate retained sweep checkpoints with:
-    - `./scripts/reasonir_hq_bright_checkpoint_eval.sh`
+  - evaluate sweep finals or checkpoints with the unified wrapper:
+    - finals only: `STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh`
+    - checkpoints only: `STAGE=batch INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh`
 
 ## Training Result
 

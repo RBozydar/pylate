@@ -87,7 +87,7 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run python examples/evaluation/bright_
 Use the final-model wrapper to evaluate the retained `final` directories for the batch, LR, and temperature sweeps:
 
 ```bash
-BEST_BATCH_SIZE=1024 BEST_LR=1e-5 ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 By default this evaluates the 4-task subset:
@@ -111,19 +111,19 @@ REPORT_TO=none ./scripts/reasonir_hq_bright_subset_eval.sh
 
 ### HQ pilot sweep checkpoints
 
-Use the checkpoint wrapper to evaluate every retained `checkpoint-*` directory as well as `final`:
+Use the same wrapper in checkpoint mode to evaluate retained `checkpoint-*` directories. If you already ran the final-model pass, set `INCLUDE_FINAL=0` to avoid duplicate `final` evals:
 
 ```bash
-BEST_BATCH_SIZE=1024 BEST_LR=1e-5 ./scripts/reasonir_hq_bright_checkpoint_eval.sh
+STAGE=batch INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 To restrict evaluation to a single training run:
 
 ```bash
-./scripts/reasonir_hq_bright_checkpoint_eval.sh hq-batch-bs256-lr1e5-temp1
+INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
 ```
 
-By default checkpoint evals log to W&B with:
+By default checkpoint-mode evals log to W&B with:
 
 - project: `ColBERT-Zero`
 - entity: `rbw`
@@ -132,8 +132,10 @@ By default checkpoint evals log to W&B with:
 The wrapper scripts do not force Hugging Face offline mode. They will fetch missing BRIGHT data into cache when needed. For cached-only reruns, prefix either wrapper with:
 
 ```bash
-HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
 ```
+
+By default the wrapper scripts clean up the model-specific BRIGHT document cache after each eval run. That keeps one-off sweep comparisons from leaving behind tens of GiB of document shards per model. Set `CLEANUP_DOCUMENT_CACHE=0` if you want to retain those caches for reuse.
 
 ## Resume Behavior
 
@@ -149,7 +151,6 @@ This behavior is implemented in:
 Wrapper scripts:
 
 - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
-- [`scripts/reasonir_hq_bright_checkpoint_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_checkpoint_eval.sh)
 
 ## Cache Behavior
 
@@ -178,7 +179,7 @@ The current HQ pilot sweep training setup keeps checkpoint analysis viable:
 - `eval_steps=25`
 - `save_total_limit=20`
 
-That means BRIGHT subset evals can be run both on retained `checkpoint-*` directories and on `final`.
+That means BRIGHT subset evals can be run both on retained `checkpoint-*` directories and on `final` using the same wrapper script.
 
 ### W&B
 
@@ -187,6 +188,7 @@ The BRIGHT evaluator can log eval metrics to W&B directly with:
 - `--report-to wandb`
 - `--wandb-project ColBERT-Zero`
 - `--wandb-entity rbw`
+- `--cleanup-document-cache` to remove model-specific doc shards after a direct evaluator run
 
 Per-task BRIGHT metrics and the final summary are logged for each eval run.
 

@@ -190,6 +190,12 @@ To log eval metrics to W&B during BRIGHT evaluation, add:
     --wandb-entity rbw
 ```
 
+To delete the model-specific BRIGHT document cache after a direct evaluator run, add:
+
+```bash
+    --cleanup-document-cache
+```
+
 Use `--reasoning gpt4 --use_reason_moderncolbert_gpt4_lengths` to match the GPT-4 reasoning-trace setting reported in the `Reason-ModernColBERT` model card.
 
 The BRIGHT runner:
@@ -205,10 +211,14 @@ For the ReasonIR HQ pilot sweeps, the repo also includes wrappers that evaluate 
 
 - retained `final` directories across the sweep runs:
   - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
-- retained `checkpoint-*` directories plus `final`:
-  - [`scripts/reasonir_hq_bright_checkpoint_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_checkpoint_eval.sh)
 
-These wrappers default to online/cache-filling behavior. If you want cached-only reruns, prefix them with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1`.
+The sweep eval wrapper supports:
+
+- `STAGE=batch|lr|temp|all` to choose which run family to evaluate
+- `INCLUDE_CHECKPOINTS=1` to traverse retained `checkpoint-*` directories
+- `INCLUDE_FINAL=0` to avoid duplicating `final` when checkpoint evals are run separately
+
+It defaults to online/cache-filling behavior and cleans up the model-specific document cache after each eval. If you want cached-only reruns with cache reuse, prefix it with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0`.
 
 
 ### Metrics

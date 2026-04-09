@@ -2,6 +2,10 @@
 
 This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including both the local synthetic triplets path and the official HQ dataset path.
 
+For the end-to-end official HQ tuning workflow, including the exact run order for sweeps and BRIGHT evals, see:
+
+- [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
+
 ## Goal
 
 Replicate the general structure of [`examples/train/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/reason_moderncolbert.py) for `ColBERT-Zero`, while preserving the prompt behavior required by the base checkpoint. The original local workflow here uses synthetic data generated in the ReasonIR repository, and the official HQ replication path is documented separately below.
@@ -171,7 +175,6 @@ It runs:
 For a BRIGHT subset comparison over produced sweep outputs, use:
 
 - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
-- [`scripts/reasonir_hq_bright_checkpoint_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_checkpoint_eval.sh)
 
 By default this evaluates the subset:
 
@@ -188,18 +191,22 @@ It also defaults to logging each eval run to W&B as:
 
 Override those with `WANDB_PROJECT`, `WANDB_ENTITY`, `WANDB_GROUP`, or disable eval logging with `REPORT_TO=none`.
 
-The eval wrappers no longer force Hugging Face offline mode. They will populate the BRIGHT cache on demand. If you want cached-only reruns, prefix the command with:
+Use `STAGE=batch`, `STAGE=lr`, `STAGE=temp`, or `STAGE=all` to choose which sweep stage to evaluate when you are not passing explicit run names.
+
+This eval wrapper also defaults to cleaning up the model-specific BRIGHT document embedding cache after each run, since sweep comparisons do not reuse document shards across different model paths. Disable that with `CLEANUP_DOCUMENT_CACHE=0` if you explicitly want cache reuse for reruns or resumes.
+
+The eval wrapper no longer forces Hugging Face offline mode. It will populate the BRIGHT cache on demand. If you want cached-only reruns, prefix the command with:
 
 ```bash
-HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
 ```
 
-Use the checkpoint wrapper when you want BRIGHT subset scores for every retained `checkpoint-*` directory as well as `final`. It defaults to the W&B group `reasonir-hq-bright-checkpoints`.
+To evaluate retained `checkpoint-*` directories with the same script, set `INCLUDE_CHECKPOINTS=1`. If you already ran the final-model pass and do not want duplicate `final` evals, also set `INCLUDE_FINAL=0`. Checkpoint-mode evals default to the W&B group `reasonir-hq-bright-checkpoints`.
 
 Example:
 
 ```bash
-BEST_BATCH_SIZE=1024 BEST_LR=1e-5 ./scripts/reasonir_hq_bright_checkpoint_eval.sh
+STAGE=temp BEST_BATCH_SIZE=1024 BEST_LR=1e-5 INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 ## Commands Used
