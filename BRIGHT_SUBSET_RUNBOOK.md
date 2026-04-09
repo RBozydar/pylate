@@ -82,12 +82,12 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run python examples/evaluation/bright_
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-raw-partial.json
 ```
 
-### HQ pilot sweep final models
+### HQ pilot sweep outputs
 
-Use the final-model wrapper to evaluate the retained `final` directories for the batch, LR, and temperature sweeps:
+Use the unified wrapper to evaluate retained `checkpoint-*` directories plus `final` for a given sweep stage:
 
 ```bash
-STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 By default this evaluates the 4-task subset:
@@ -101,33 +101,25 @@ and logs evals to W&B with:
 
 - project: `ColBERT-Zero`
 - entity: `rbw`
-- group: `reasonir-hq-bright-subset`
+- group: `reasonir-hq-bright-checkpoints`
+
+To restrict evaluation to a single training run:
+
+```bash
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
+```
+
+If you want finals only for a stage, omit `INCLUDE_CHECKPOINTS=1`:
+
+```bash
+STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
+```
 
 Disable eval logging with:
 
 ```bash
 REPORT_TO=none ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
-
-### HQ pilot sweep checkpoints
-
-Use the same wrapper in checkpoint mode to evaluate retained `checkpoint-*` directories. If you already ran the final-model pass, set `INCLUDE_FINAL=0` to avoid duplicate `final` evals:
-
-```bash
-STAGE=batch INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
-
-To restrict evaluation to a single training run:
-
-```bash
-INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
-```
-
-By default checkpoint-mode evals log to W&B with:
-
-- project: `ColBERT-Zero`
-- entity: `rbw`
-- group: `reasonir-hq-bright-checkpoints`
 
 The wrapper scripts do not force Hugging Face offline mode. They will fetch missing BRIGHT data into cache when needed. For cached-only reruns, prefix either wrapper with:
 
@@ -148,7 +140,7 @@ This behavior is implemented in:
 
 - [`examples/evaluation/bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py)
 
-Wrapper scripts:
+Wrapper script:
 
 - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
 
@@ -179,7 +171,7 @@ The current HQ pilot sweep training setup keeps checkpoint analysis viable:
 - `eval_steps=25`
 - `save_total_limit=20`
 
-That means BRIGHT subset evals can be run both on retained `checkpoint-*` directories and on `final` using the same wrapper script.
+That means BRIGHT subset evals can be run both on retained `checkpoint-*` directories and on `final` in a single pass.
 
 ### W&B
 

@@ -201,12 +201,12 @@ The eval wrapper no longer forces Hugging Face offline mode. It will populate th
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
 ```
 
-To evaluate retained `checkpoint-*` directories with the same script, set `INCLUDE_CHECKPOINTS=1`. If you already ran the final-model pass and do not want duplicate `final` evals, also set `INCLUDE_FINAL=0`. Checkpoint-mode evals default to the W&B group `reasonir-hq-bright-checkpoints`.
+The primary workflow is to evaluate retained `checkpoint-*` directories and `final` together by setting `INCLUDE_CHECKPOINTS=1`. Checkpoint-inclusive evals default to the W&B group `reasonir-hq-bright-checkpoints`.
 
 Example:
 
 ```bash
-STAGE=temp BEST_BATCH_SIZE=1024 BEST_LR=1e-5 INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=temp BEST_BATCH_SIZE=1024 BEST_LR=1e-5 INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 ## Commands Used

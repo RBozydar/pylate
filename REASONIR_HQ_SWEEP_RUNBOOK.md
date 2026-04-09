@@ -7,12 +7,11 @@ This runbook is the step-by-step workflow for tuning `ColBERT-Zero` on the offic
 This covers:
 
 - Stage 1 batch-size sweep
-- Stage 1 BRIGHT subset evals on `final`
-- Stage 1 BRIGHT subset evals on retained `checkpoint-*`
+- Stage 1 BRIGHT subset evals on retained `checkpoint-*` plus `final`
 - Stage 2 learning-rate sweep
-- Stage 2 BRIGHT subset evals
+- Stage 2 BRIGHT subset evals on retained `checkpoint-*` plus `final`
 - Stage 3 temperature sweep
-- Stage 3 BRIGHT subset evals
+- Stage 3 BRIGHT subset evals on retained `checkpoint-*` plus `final`
 - W&B review and run inspection
 
 It assumes the repo-local defaults already in use on this machine:
@@ -60,17 +59,18 @@ The 4 runs are:
 - `hq-batch-bs1024-lr4e5-temp1`
 - `hq-batch-bs2048-lr8e5-temp1`
 
-## Step 2: Evaluate Batch Sweep Finals
+## Step 2: Evaluate Batch Sweep Outputs
 
 After Stage 1 finishes, run:
 
 ```bash
-STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 For Stage 1, do not set `BEST_BATCH_SIZE` or `BEST_LR`. The script will:
 
-- evaluate the 4 Stage 1 `final` models
+- evaluate retained `checkpoint-*` directories for the 4 Stage 1 runs
+- evaluate `final` for the same 4 runs
 
 By default this evaluates:
 
@@ -79,17 +79,7 @@ By default this evaluates:
 - `robotics`
 - `pony`
 
-## Step 3: Evaluate Batch Sweep Checkpoints
-
-Run:
-
-```bash
-STAGE=batch INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
-
-This evaluates every retained `checkpoint-*` for those 4 runs without duplicating `final`.
-
-## Step 4: Review Stage 1 Results
+## Step 3: Review Stage 1 Results
 
 Use three sources:
 
@@ -128,7 +118,7 @@ Selection rule:
 - choose by BRIGHT subset quality first
 - use training stability and throughput as tie-breakers
 
-## Step 5: Pick The Best Batch Size
+## Step 4: Pick The Best Batch Size
 
 Once Stage 1 is reviewed, choose:
 
@@ -142,7 +132,7 @@ Example:
 export BEST_BATCH_SIZE=1024
 ```
 
-## Step 6: Run The LR Sweep
+## Step 5: Run The LR Sweep
 
 Run:
 
@@ -157,25 +147,17 @@ This produces:
 - `hq-lr-bs<BEST_BATCH_SIZE>-lr1e5-temp1`
 - `hq-lr-bs<BEST_BATCH_SIZE>-lr5e5-temp1`
 
-## Step 7: Evaluate LR Sweep Finals
+## Step 6: Evaluate LR Sweep Outputs
 
 Run:
 
 ```bash
-STAGE=lr BEST_BATCH_SIZE=$BEST_BATCH_SIZE ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=lr BEST_BATCH_SIZE=$BEST_BATCH_SIZE INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-At this point the script will evaluate the Stage 2 LR runs for the chosen batch size.
+At this point the script will evaluate retained `checkpoint-*` directories and `final` for the Stage 2 LR runs at the chosen batch size.
 
-## Step 8: Evaluate LR Sweep Checkpoints
-
-Run:
-
-```bash
-STAGE=lr BEST_BATCH_SIZE=$BEST_BATCH_SIZE INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
-
-## Step 9: Pick The Best LR
+## Step 7: Pick The Best LR
 
 Choose:
 
@@ -189,7 +171,7 @@ Example:
 export BEST_LR=1e-5
 ```
 
-## Step 10: Run The Temperature Sweep
+## Step 8: Run The Temperature Sweep
 
 Run:
 
@@ -203,25 +185,17 @@ This produces:
 - `hq-temp-bs<BEST_BATCH_SIZE>-lr${BEST_LR//./}-temp005`
 - `hq-temp-bs<BEST_BATCH_SIZE>-lr${BEST_LR//./}-temp01`
 
-## Step 11: Evaluate Temperature Sweep Finals
+## Step 9: Evaluate Temperature Sweep Outputs
 
 Run:
 
 ```bash
-STAGE=temp BEST_BATCH_SIZE=$BEST_BATCH_SIZE BEST_LR=$BEST_LR ./scripts/reasonir_hq_bright_subset_eval.sh
+STAGE=temp BEST_BATCH_SIZE=$BEST_BATCH_SIZE BEST_LR=$BEST_LR INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-Now the script will evaluate the Stage 3 temp runs for the chosen batch size and LR.
+Now the script will evaluate retained `checkpoint-*` directories and `final` for the Stage 3 temp runs at the chosen batch size and LR.
 
-## Step 12: Evaluate Temperature Sweep Checkpoints
-
-Run:
-
-```bash
-STAGE=temp BEST_BATCH_SIZE=$BEST_BATCH_SIZE BEST_LR=$BEST_LR INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
-
-## Step 13: Pick The Winner
+## Step 10: Pick The Winner
 
 Final selection should be based on:
 
@@ -245,6 +219,8 @@ Keep BRIGHT document caches between eval runs:
 ```bash
 CLEANUP_DOCUMENT_CACHE=0 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
+
+If you want a finals-only pass for any stage, omit `INCLUDE_CHECKPOINTS=1`.
 
 Force cached-only BRIGHT reruns:
 

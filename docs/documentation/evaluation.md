@@ -215,8 +215,8 @@ For the ReasonIR HQ pilot sweeps, the repo also includes wrappers that evaluate 
 The sweep eval wrapper supports:
 
 - `STAGE=batch|lr|temp|all` to choose which run family to evaluate
-- `INCLUDE_CHECKPOINTS=1` to traverse retained `checkpoint-*` directories
-- `INCLUDE_FINAL=0` to avoid duplicating `final` when checkpoint evals are run separately
+- `INCLUDE_CHECKPOINTS=1` to traverse retained `checkpoint-*` directories and `final` in one pass
+- `INCLUDE_FINAL=0` if you explicitly want checkpoint-only evals
 
 It defaults to online/cache-filling behavior and cleans up the model-specific document cache after each eval. If you want cached-only reruns with cache reuse, prefix it with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0`.
 

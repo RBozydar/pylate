@@ -61,8 +61,8 @@ On the new machine, pass explicit overrides:
   - inspect recent W&B runs from the terminal with:
     - `uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10`
   - evaluate sweep finals or checkpoints with the unified wrapper:
+    - preferred: `STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh`
     - finals only: `STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh`
-    - checkpoints only: `STAGE=batch INCLUDE_CHECKPOINTS=1 INCLUDE_FINAL=0 ./scripts/reasonir_hq_bright_subset_eval.sh`
 
 ## Training Result
 
