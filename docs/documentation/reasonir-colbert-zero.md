@@ -1,10 +1,10 @@
 # ReasonIR ColBERT-Zero Fine-Tuning
 
-This note captures the local workflow used to fine-tune `lightonai/ColBERT-Zero` on ReasonIR-style synthetic reasoning triplets.
+This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including both the local synthetic triplets path and the official HQ dataset path.
 
 ## Goal
 
-Replicate the general structure of [`examples/train/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/reason_moderncolbert.py) for `ColBERT-Zero`, but train from local synthetic data generated in the ReasonIR repository.
+Replicate the general structure of [`examples/train/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/reason_moderncolbert.py) for `ColBERT-Zero`, while preserving the prompt behavior required by the base checkpoint. The original local workflow here uses synthetic data generated in the ReasonIR repository, and the official HQ replication path is documented separately below.
 
 The critical constraint is prompt alignment:
 
@@ -12,6 +12,39 @@ The critical constraint is prompt alignment:
 - documents and negatives must keep the `search_document: ` prefix
 
 This is required by the base checkpoint and is preserved in [`examples/train/ColBERT-zero/reasonir.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reasonir.py).
+
+The training scripts in this repo also default to Weights & Biases logging with:
+
+- project: `ColBERT-Zero`
+- entity: `rbw`
+
+Those defaults are baked into:
+
+- [`examples/train/ColBERT-zero/reasonir.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reasonir.py)
+- [`examples/train/ColBERT-zero/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reason_moderncolbert.py)
+
+You can override them with `--wandb-project`, `--wandb-entity`, or disable trainer integrations with `--report-to none`.
+
+The BRIGHT evaluator also supports opt-in W&B logging with the same defaults:
+
+- project: `ColBERT-Zero`
+- entity: `rbw`
+
+Use `--report-to wandb` on [`bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py) to log per-task metrics plus the final summary into W&B. Disable it with `--report-to none`.
+
+For quick project inspection from the terminal, use:
+
+- [`scripts/wandb_project_runs.py`](/home/rbw/repo/pylate/scripts/wandb_project_runs.py)
+
+Example:
+
+```bash
+uv run python scripts/wandb_project_runs.py \
+  --entity rbw \
+  --project ColBERT-Zero \
+  --limit 10 \
+  --history-tail 5
+```
 
 ## Local Inputs
 
@@ -47,6 +80,128 @@ Key behavior:
 - uses a prompt-aligned triplet evaluator when validation is enabled
 - supports a writable HF datasets cache via `--dataset-cache-dir`
 
+## Official HQ Replication Path
+
+If you want to stay closer to [`examples/train/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/reason_moderncolbert.py), there is now a dedicated ColBERT-Zero entry point for the official ReasonIR HQ dataset:
+
+- [`examples/train/ColBERT-zero/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reason_moderncolbert.py)
+
+This script follows the dataset-card guidance for HQ data:
+
+- loads `reasonir/reasonir-data` with config `hq`
+- loads `xlangai/BRIGHT` with config `documents`
+- reconstructs positive document text by resolving the positive document identifier against the BRIGHT document store
+- keeps the original HQ negative text as provided by ReasonIR
+- preserves `search_query: ` and `search_document: ` during training and validation
+
+Example command:
+
+```bash
+uv run python examples/train/ColBERT-zero/reason_moderncolbert.py \
+  --model /mnt/ml_models/lightonai/ColBERT-Zero \
+  --reasonir-split train \
+  --validation-size 0 \
+  --epochs 3 \
+  --lr 1e-5 \
+  --bs 16 \
+  --eval-bs 16 \
+  --mini-batch-size 4 \
+  --fp16 \
+  --num-workers 4 \
+  --save-steps 1000 \
+  --logging-steps 10 \
+  --save-total-limit 2 \
+  --run-name reasonir-hq-colbert-zero \
+  --dataset-cache-dir /tmp/pylate-hf-cache \
+  --output-dir /home/rbw/repo/pylate/output/reasonir-hq-colbert-zero
+```
+
+Use this path when the goal is parity with the public ReasonIR HQ training recipe rather than the local synthetic HQ/VL workflow described below.
+
+### Pilot Matrix
+
+Use a three-stage pilot sweep so the results are easier to interpret.
+
+Stage 1 is a fairer batch-size comparison with roughly equal examples seen and learning rate scaled with batch size:
+
+- [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
+
+This script keeps shared settings fixed:
+
+- `temp=1.0`
+- `validation_size=0.01`
+- `warmup_ratio=0.1`
+- `mini_batch_size=32`
+- `save_steps=25`
+- `eval_steps=25`
+- `save_total_limit=20`
+
+It runs:
+
+- `hq-batch-bs256-lr1e5-temp1` with `max_steps=400`
+- `hq-batch-bs512-lr2e5-temp1` with `max_steps=200`
+- `hq-batch-bs1024-lr4e5-temp1` with `max_steps=100`
+- `hq-batch-bs2048-lr8e5-temp1` with `max_steps=50`
+
+Stage 2 is a learning-rate sweep at the winning batch size:
+
+- [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
+
+Set `BEST_BATCH_SIZE` before running it. By default it uses `1024`.
+
+It runs:
+
+- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e6-temp1`
+- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e6-temp1`
+- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e5-temp1`
+- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e5-temp1`
+
+Stage 3 is a temperature sweep at the winning batch size and learning rate:
+
+- [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
+
+Set both `BEST_BATCH_SIZE` and `BEST_LR` before running it.
+
+It runs:
+
+- `temp=0.02`
+- `temp=0.05`
+- `temp=0.1`
+
+For a BRIGHT subset comparison over produced sweep outputs, use:
+
+- [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+- [`scripts/reasonir_hq_bright_checkpoint_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_checkpoint_eval.sh)
+
+By default this evaluates the subset:
+
+- `biology`
+- `economics`
+- `robotics`
+- `pony`
+
+It also defaults to logging each eval run to W&B as:
+
+- project: `ColBERT-Zero`
+- entity: `rbw`
+- group: `reasonir-hq-bright-subset`
+
+Override those with `WANDB_PROJECT`, `WANDB_ENTITY`, `WANDB_GROUP`, or disable eval logging with `REPORT_TO=none`.
+
+The eval wrappers no longer force Hugging Face offline mode. They will populate the BRIGHT cache on demand. If you want cached-only reruns, prefix the command with:
+
+```bash
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
+```
+
+Use the checkpoint wrapper when you want BRIGHT subset scores for every retained `checkpoint-*` directory as well as `final`. It defaults to the W&B group `reasonir-hq-bright-checkpoints`.
+
+Example:
+
+```bash
+BEST_BATCH_SIZE=1024 BEST_LR=1e-5 ./scripts/reasonir_hq_bright_checkpoint_eval.sh
+```
+
 ## Commands Used
 
 ### GPU smoke test
@@ -67,6 +222,7 @@ uv run python examples/train/ColBERT-zero/reasonir.py \
   --save-steps 9999 \
   --logging-steps 1 \
   --save-total-limit 1 \
+  --run-name reasonir-smoke-gpu \
   --dataset-cache-dir /tmp/pylate-hf-cache \
   --output-dir /home/rbw/repo/pylate/output/reasonir-smoke-gpu
 ```
@@ -89,6 +245,7 @@ uv run python examples/train/ColBERT-zero/reasonir.py \
   --save-steps 9999 \
   --logging-steps 1 \
   --save-total-limit 1 \
+  --run-name reasonir-pilot-bs16 \
   --dataset-cache-dir /tmp/pylate-hf-cache \
   --output-dir /home/rbw/repo/pylate/output/reasonir-pilot-bs16
 ```
@@ -111,6 +268,7 @@ uv run python -u examples/train/ColBERT-zero/reasonir.py \
   --save-steps 1000 \
   --logging-steps 10 \
   --save-total-limit 2 \
+  --run-name reasonir-full-gpu \
   --dataset-cache-dir /tmp/pylate-hf-cache \
   --output-dir /home/rbw/repo/pylate/output/reasonir-full-gpu
 ```
@@ -196,6 +354,7 @@ Key behavior:
 - applies BRIGHT `excluded_ids` before scoring
 - uses exact PyLate MaxSim instead of approximate retrieval
 - caches document embeddings per model and task under `--cache_dir`
+- reuses cached document embeddings across different `--corpus_chunk_size` values via `--document_cache_chunk_size`
 - resumes from `--output_json` and skips already completed tasks
 
 Example raw-query BRIGHT run:

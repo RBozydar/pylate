@@ -45,10 +45,21 @@ On the new machine, pass explicit overrides:
   - `--data-root /different/path/to/ReasonIR/synthetic_data_generation/synthetic_data`
   - `--output-dir /different/path/to/output`
   - `--dataset-cache-dir /different/path/to/hf-cache`
+  - W&B defaults baked into the training scripts:
+    - project: `ColBERT-Zero`
+    - entity: `rbw`
 - evaluation:
   - `--model_name_or_path /different/path/to/model`
   - `--cache_dir /different/path/to/cache`
   - `--output_json /different/path/to/result.json`
+  - BRIGHT eval can also log to W&B with:
+    - `--report-to wandb`
+    - `--wandb-project ColBERT-Zero`
+    - `--wandb-entity rbw`
+  - inspect recent W&B runs from the terminal with:
+    - `uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10`
+  - evaluate retained sweep checkpoints with:
+    - `./scripts/reasonir_hq_bright_checkpoint_eval.sh`
 
 ## Training Result
 

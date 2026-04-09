@@ -4,10 +4,10 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import torch
-from datasets import Dataset, concatenate_datasets, load_dataset
+from datasets import Dataset, DatasetDict, load_dataset
 from sentence_transformers import (
     SentenceTransformerTrainer,
     SentenceTransformerTrainingArguments,
@@ -19,11 +19,11 @@ from pylate.scores import colbert_scores_pairwise
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PATH = Path("/mnt/ml_models/lightonai/ColBERT-Zero")
-DEFAULT_DATA_ROOT = Path(
-    "/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data"
-)
-DEFAULT_GENERATOR = "gemini-3-flash-preview"
-DEFAULT_PROMPT_ID = "hq_gen"
+DEFAULT_REASONIR_DATASET = "reasonir/reasonir-data"
+DEFAULT_REASONIR_CONFIG = "hq"
+DEFAULT_REASONIR_SPLIT = "train"
+DEFAULT_BRIGHT_DATASET = "xlangai/BRIGHT"
+DEFAULT_BRIGHT_CONFIG = "documents"
 DEFAULT_WANDB_PROJECT = "ColBERT-Zero"
 DEFAULT_WANDB_ENTITY = "rbw"
 EXPECTED_QUERY_PROMPT = "search_query: "
@@ -35,10 +35,10 @@ class PromptAlignedTripletEvaluator(evaluation.ColBERTTripletEvaluator):
 
     def __init__(
         self,
-        *args,
+        *args: Any,
         query_prompt: str,
         document_prompt: str,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.query_prompt = query_prompt
@@ -51,6 +51,7 @@ class PromptAlignedTripletEvaluator(evaluation.ColBERTTripletEvaluator):
         epoch: int = -1,
         steps: int = -1,
     ) -> dict[str, float]:
+        del output_path
         LOGGER.info(
             "Evaluating %s at epoch=%s steps=%s with prompt-aligned encoding.",
             self.name or "validation",
@@ -107,8 +108,8 @@ class PromptAlignedTripletEvaluator(evaluation.ColBERTTripletEvaluator):
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Fine-tune ColBERT-Zero on local ReasonIR-style synthetic triplets while "
-            "preserving the required search_query:/search_document: prompt prefixes."
+            "Fine-tune ColBERT-Zero on the official ReasonIR HQ dataset using the "
+            "same BRIGHT document reconstruction described by the dataset card."
         )
     )
     parser.add_argument(
@@ -118,52 +119,58 @@ def parse_args() -> argparse.Namespace:
         help="Path or HF identifier for the ColBERT-Zero checkpoint.",
     )
     parser.add_argument(
-        "--data-root",
-        type=Path,
-        default=DEFAULT_DATA_ROOT,
-        help="Root directory containing synthetic_data/{hq,vl}/<prompt-id>/<generator>/final_train_data.jsonl.",
+        "--reasonir-dataset",
+        type=str,
+        default=DEFAULT_REASONIR_DATASET,
+        help="Hugging Face dataset id for ReasonIR.",
     )
     parser.add_argument(
-        "--datasets",
+        "--reasonir-config",
         type=str,
-        default="hq,vl",
-        help="Comma-separated dataset groups to use. Default: hq,vl",
+        default=DEFAULT_REASONIR_CONFIG,
+        help="ReasonIR dataset config to train on. Default: hq.",
     )
     parser.add_argument(
-        "--prompt-id",
+        "--reasonir-split",
         type=str,
-        default=DEFAULT_PROMPT_ID,
-        help="Synthetic prompt template directory name.",
+        default=DEFAULT_REASONIR_SPLIT,
+        help="ReasonIR dataset split. Default: train.",
     )
     parser.add_argument(
-        "--generator",
+        "--bright-dataset",
         type=str,
-        default=DEFAULT_GENERATOR,
-        help="Synthetic data generator subdirectory name.",
+        default=DEFAULT_BRIGHT_DATASET,
+        help="Hugging Face dataset id for BRIGHT documents.",
+    )
+    parser.add_argument(
+        "--bright-config",
+        type=str,
+        default=DEFAULT_BRIGHT_CONFIG,
+        help="BRIGHT dataset config containing the documents. Default: documents.",
     )
     parser.add_argument(
         "--dataset-cache-dir",
         type=Path,
         default=None,
-        help="Optional Hugging Face datasets cache directory for local JSON loading.",
+        help="Optional Hugging Face datasets cache directory.",
     )
     parser.add_argument(
         "--max-negatives",
         type=int,
         default=1,
-        help="Number of mined negatives to keep per example. Default: 1.",
+        help="Number of negative documents to keep per training example. Default: 1.",
     )
     parser.add_argument(
-        "--max-examples-per-split",
+        "--max-examples",
         type=int,
         default=None,
-        help="Optional cap applied independently to each selected split after shuffling.",
+        help="Optional cap on the number of HQ examples after shuffling.",
     )
     parser.add_argument(
         "--validation-size",
         type=float,
         default=0.01,
-        help="Fraction (<1) or count (>=1) of each split reserved for validation. Set to 0 to disable.",
+        help="Fraction (<1) or count (>=1) reserved for validation. Set to 0 to disable.",
     )
     parser.add_argument(
         "--epochs",
@@ -228,7 +235,7 @@ def parse_args() -> argparse.Namespace:
         "--document-prompt",
         type=str,
         default=None,
-        help="Prompt prepended to positive and negative documents during training. Defaults to the model prompt config.",
+        help="Prompt prepended to positives and negatives during training. Defaults to the model prompt config.",
     )
     parser.add_argument(
         "--output-dir",
@@ -294,6 +301,18 @@ def parse_args() -> argparse.Namespace:
         help="Gather document embeddings across devices for larger in-batch negatives.",
     )
     parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=-1,
+        help="Override epochs with a fixed number of optimization steps. Default: -1.",
+    )
+    parser.add_argument(
+        "--warmup-ratio",
+        type=float,
+        default=0.0,
+        help="Learning-rate warmup ratio. Default: 0.0.",
+    )
+    parser.add_argument(
         "--wandb-project",
         type=str,
         default=DEFAULT_WANDB_PROJECT,
@@ -314,31 +333,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_dataset_names(raw_value: str) -> list[str]:
-    dataset_names = [value.strip() for value in raw_value.split(",") if value.strip()]
-    if not dataset_names:
-        raise ValueError("At least one dataset name must be provided via --datasets.")
-    return dataset_names
+def dataset_cache_dir(cache_dir: Path | None) -> str | None:
+    """Return an expanded Hugging Face cache dir string."""
 
-
-def resolve_reasonir_file(
-    data_root: Path,
-    dataset_name: str,
-    prompt_id: str,
-    generator: str,
-) -> Path:
-    data_file = (
-        data_root.expanduser()
-        / dataset_name
-        / prompt_id
-        / generator
-        / "final_train_data.jsonl"
-    )
-    if not data_file.is_file():
-        raise FileNotFoundError(
-            f"Could not find ReasonIR synthetic data file: {data_file}"
-        )
-    return data_file
+    if cache_dir is None:
+        return None
+    return str(cache_dir.expanduser())
 
 
 def validation_size_for_dataset(
@@ -375,122 +375,173 @@ def resolve_report_to(raw_value: str) -> list[str]:
     return values
 
 
-def map_reasonir_row(example: dict, max_negatives: int) -> dict[str, str]:
+def join_text(parts: Sequence[str]) -> str:
+    """Join non-empty text fragments with normalized whitespace."""
+
+    return " ".join(part.strip() for part in parts if part and part.strip())
+
+
+def normalize_query(raw_query: str | Sequence[str]) -> str:
+    """Normalize HQ query payloads into a single string."""
+
+    if isinstance(raw_query, str):
+        return raw_query.strip()
+    return join_text([str(part) for part in raw_query])
+
+
+def get_doc_and_ids(doc_pairs: Sequence[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """Extract BRIGHT document texts and ids from a task split."""
+
+    doc_ids: list[str] = []
+    documents: list[str] = []
+    for doc_pair in doc_pairs:
+        doc_ids.append(str(doc_pair["id"]))
+        documents.append(str(doc_pair["content"]))
+    return documents, doc_ids
+
+
+def build_bright_document_lookup(bright_documents: DatasetDict) -> dict[str, str]:
+    """Build a global BRIGHT document-id to document-text mapping."""
+
+    id_to_document: dict[str, str] = {}
+    collision_count = 0
+    for task_name in bright_documents.keys():
+        documents, document_ids = get_doc_and_ids(bright_documents[task_name])
+        for document_text, document_id in zip(documents, document_ids, strict=True):
+            existing = id_to_document.get(document_id)
+            if existing is not None and existing != document_text:
+                collision_count += 1
+                raise ValueError(
+                    "Found conflicting BRIGHT documents for id "
+                    f"{document_id!r} while processing task {task_name!r}."
+                )
+            id_to_document[document_id] = document_text
+
+    LOGGER.info(
+        "Built BRIGHT document lookup with %d unique documents.",
+        len(id_to_document),
+    )
+    if collision_count:
+        LOGGER.warning("Detected %d conflicting BRIGHT document ids.", collision_count)
+    return id_to_document
+
+
+def row_has_required_fields(
+    example: dict[str, Any],
+    *,
+    max_negatives: int,
+    id_to_document: dict[str, str],
+) -> bool:
+    """Validate that an HQ row can be converted into a training triplet."""
+
+    positives = example.get("pos") or []
+    negatives = example.get("neg") or []
+    if not normalize_query(example.get("query") or []):
+        return False
+    if len(positives) < 1 or len(negatives) < max_negatives:
+        return False
+
+    positive = positives[0]
+    if len(positive) < 2:
+        return False
+    if str(positive[1]) not in id_to_document:
+        return False
+
+    for negative in negatives[:max_negatives]:
+        if len(negative) < 2 or not join_text([str(negative[0]), str(negative[1])]):
+            return False
+
+    return True
+
+
+def map_hq_row(
+    example: dict[str, Any],
+    *,
+    max_negatives: int,
+    id_to_document: dict[str, str],
+) -> dict[str, str]:
+    """Convert an HQ example into query/document/negative columns."""
+
+    positives = example["pos"]
+    negatives = example["neg"]
+    positive_instruction, positive_id = positives[0][0], positives[0][1]
+
     mapped = {
-        "query": example["query"].strip(),
-        "document": example["pos"][0].strip(),
+        "query": normalize_query(example["query"]),
+        "document": join_text(
+            [str(positive_instruction), id_to_document[str(positive_id)]]
+        ),
     }
-    for index, negative in enumerate(example["neg"][:max_negatives]):
-        mapped[f"negative_{index}"] = negative.strip()
+    for index, negative in enumerate(negatives[:max_negatives]):
+        mapped[f"negative_{index}"] = join_text(
+            [str(negative[0]), str(negative[1])]
+        )
     return mapped
 
 
-def load_reasonir_split(
-    *,
-    data_file: Path,
-    dataset_name: str,
-    max_negatives: int,
-    max_examples: int | None,
-    validation_size: float,
-    dataset_cache_dir: Path | None,
-    seed: int,
-) -> tuple[Dataset, Dataset | None]:
-    dataset = load_dataset(
-        "json",
-        data_files=str(data_file),
-        split="train",
-        cache_dir=(
-            str(dataset_cache_dir.expanduser()) if dataset_cache_dir is not None else None
-        ),
+def load_hq_dataset(args: argparse.Namespace) -> tuple[Dataset, Dataset | None]:
+    """Load and transform the official ReasonIR HQ training set."""
+
+    cache_dir = dataset_cache_dir(args.dataset_cache_dir)
+    hq_dataset = load_dataset(
+        args.reasonir_dataset,
+        args.reasonir_config,
+        split=args.reasonir_split,
+        cache_dir=cache_dir,
     )
-    dataset = dataset.filter(
-        lambda row: (
-            bool(row.get("query"))
-            and len(row.get("pos") or []) >= 1
-            and len(row.get("neg") or []) >= max_negatives
+    bright_documents = load_dataset(
+        args.bright_dataset,
+        args.bright_config,
+        cache_dir=cache_dir,
+    )
+    id_to_document = build_bright_document_lookup(bright_documents=bright_documents)
+
+    original_size = len(hq_dataset)
+    filtered_dataset = hq_dataset.filter(
+        lambda row: row_has_required_fields(
+            row,
+            max_negatives=args.max_negatives,
+            id_to_document=id_to_document,
         )
     )
-    dataset = dataset.shuffle(seed=seed)
+    LOGGER.info(
+        "Loaded %d/%d HQ examples after filtering rows without resolvable positives or enough negatives.",
+        len(filtered_dataset),
+        original_size,
+    )
+    if len(filtered_dataset) == 0:
+        raise ValueError("No HQ training rows remain after filtering.")
 
-    if max_examples is not None:
-        dataset = dataset.select(range(min(max_examples, len(dataset))))
+    filtered_dataset = filtered_dataset.shuffle(seed=args.seed)
+    if args.max_examples is not None:
+        filtered_dataset = filtered_dataset.select(
+            range(min(args.max_examples, len(filtered_dataset)))
+        )
 
-    dataset = dataset.map(
-        lambda row: map_reasonir_row(example=row, max_negatives=max_negatives),
-        remove_columns=dataset.column_names,
+    mapped_dataset = filtered_dataset.map(
+        lambda row: map_hq_row(
+            row,
+            max_negatives=args.max_negatives,
+            id_to_document=id_to_document,
+        ),
+        remove_columns=filtered_dataset.column_names,
     )
     ordered_columns = [
         "query",
         "document",
-        *[f"negative_{index}" for index in range(max_negatives)],
+        *[f"negative_{index}" for index in range(args.max_negatives)],
     ]
-    dataset = dataset.select_columns(ordered_columns)
+    mapped_dataset = mapped_dataset.select_columns(ordered_columns)
 
     eval_size = validation_size_for_dataset(
-        requested_size=validation_size,
-        dataset_size=len(dataset),
+        requested_size=args.validation_size,
+        dataset_size=len(mapped_dataset),
     )
     if not eval_size:
-        return dataset, None
+        return mapped_dataset, None
 
-    splits = dataset.train_test_split(test_size=eval_size, seed=seed)
+    splits = mapped_dataset.train_test_split(test_size=eval_size, seed=args.seed)
     return splits["train"], splits["test"]
-
-
-def concatenate_or_none(datasets_list: Sequence[Dataset]) -> Dataset | None:
-    if not datasets_list:
-        return None
-    if len(datasets_list) == 1:
-        return datasets_list[0]
-    return concatenate_datasets(list(datasets_list))
-
-
-def build_datasets(args: argparse.Namespace) -> tuple[Dataset, Dataset | None, list[str]]:
-    selected_splits = parse_dataset_names(args.datasets)
-    train_parts: list[Dataset] = []
-    eval_parts: list[Dataset] = []
-
-    for dataset_name in selected_splits:
-        data_file = resolve_reasonir_file(
-            data_root=args.data_root,
-            dataset_name=dataset_name,
-            prompt_id=args.prompt_id,
-            generator=args.generator,
-        )
-        train_split, eval_split = load_reasonir_split(
-            data_file=data_file,
-            dataset_name=dataset_name,
-            max_negatives=args.max_negatives,
-            max_examples=args.max_examples_per_split,
-            validation_size=args.validation_size,
-            dataset_cache_dir=args.dataset_cache_dir,
-            seed=args.seed,
-        )
-        LOGGER.info(
-            "Loaded %s from %s with %d train rows%s.",
-            dataset_name,
-            data_file,
-            len(train_split),
-            (
-                f" and {len(eval_split)} eval rows"
-                if eval_split is not None
-                else ""
-            ),
-        )
-        train_parts.append(train_split)
-        if eval_split is not None:
-            eval_parts.append(eval_split)
-
-    train_dataset = concatenate_or_none(train_parts)
-    if train_dataset is None:
-        raise ValueError("No training data was loaded.")
-
-    train_dataset = train_dataset.shuffle(seed=args.seed)
-    eval_dataset = concatenate_or_none(eval_parts)
-    if eval_dataset is not None:
-        eval_dataset = eval_dataset.shuffle(seed=args.seed)
-
-    return train_dataset, eval_dataset, selected_splits
 
 
 def resolve_prompts(
@@ -498,6 +549,8 @@ def resolve_prompts(
     query_prompt_override: str | None,
     document_prompt_override: str | None,
 ) -> tuple[str, str]:
+    """Resolve required ColBERT-Zero prompts from overrides or checkpoint config."""
+
     configured_prompts = model.prompts or {}
     query_prompt = query_prompt_override or configured_prompts.get("query")
     document_prompt = document_prompt_override or configured_prompts.get("document")
@@ -530,14 +583,15 @@ def build_output_dir(
     output_dir: Path | None,
     run_name: str | None,
     model_path: Path,
-    datasets_used: Sequence[str],
-    generator: str,
+    reasonir_config: str,
 ) -> tuple[str, str]:
+    """Resolve run metadata and output directory."""
+
     model_short_name = model_path.name if model_path.name else str(model_path)
     resolved_run_name = (
         run_name
         if run_name is not None
-        else f"{model_short_name}-ReasonIR-{generator}-{'-'.join(datasets_used)}"
+        else f"{model_short_name}-ReasonIR-{reasonir_config}"
     )
     resolved_output_dir = (
         output_dir
@@ -553,6 +607,8 @@ def build_evaluator(
     query_prompt: str,
     document_prompt: str,
 ) -> PromptAlignedTripletEvaluator | None:
+    """Build a prompt-aware triplet evaluator when validation is enabled."""
+
     if eval_dataset is None or len(eval_dataset) == 0:
         return None
     return PromptAlignedTripletEvaluator(
@@ -561,7 +617,7 @@ def build_evaluator(
         negatives=eval_dataset["negative_0"],
         query_prompt=query_prompt,
         document_prompt=document_prompt,
-        name="reasonir-validation",
+        name="reasonir-hq-validation",
         batch_size=eval_batch_size,
         show_progress_bar=False,
         write_csv=False,
@@ -575,7 +631,7 @@ def main() -> None:
     )
     args = parse_args()
     configure_wandb(project=args.wandb_project, entity=args.wandb_entity)
-    train_dataset, eval_dataset, datasets_used = build_datasets(args=args)
+    train_dataset, eval_dataset = load_hq_dataset(args=args)
 
     temperature: float | torch.nn.Parameter
     if args.learnable_temperature:
@@ -583,9 +639,10 @@ def main() -> None:
     else:
         temperature = args.temp
 
+    resolved_model_path = args.model.expanduser()
     model = models.ColBERT(
-        model_name_or_path=str(args.model.expanduser()),
-        local_files_only=args.model.expanduser().exists(),
+        model_name_or_path=str(resolved_model_path),
+        local_files_only=resolved_model_path.exists(),
         query_length=args.query_length,
         document_length=args.document_length,
     )
@@ -603,9 +660,8 @@ def main() -> None:
     run_name, output_dir = build_output_dir(
         output_dir=args.output_dir,
         run_name=args.run_name,
-        model_path=args.model.expanduser(),
-        datasets_used=datasets_used,
-        generator=args.generator,
+        model_path=resolved_model_path,
+        reasonir_config=args.reasonir_config,
     )
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -626,6 +682,7 @@ def main() -> None:
     training_args = SentenceTransformerTrainingArguments(
         output_dir=output_dir,
         num_train_epochs=args.epochs,
+        max_steps=args.max_steps,
         per_device_train_batch_size=args.bs,
         per_device_eval_batch_size=args.eval_bs,
         eval_strategy="steps" if evaluator is not None else "no",
@@ -637,6 +694,7 @@ def main() -> None:
         bf16=use_bf16,
         run_name=run_name,
         learning_rate=args.lr,
+        warmup_ratio=args.warmup_ratio,
         dataloader_num_workers=args.num_workers,
         dataloader_pin_memory=True,
         dataloader_drop_last=True,

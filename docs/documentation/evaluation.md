@@ -182,14 +182,33 @@ uv run python examples/evaluation/bright_reasonir.py \
     --output_json output/bright-results.json
 ```
 
+To log eval metrics to W&B during BRIGHT evaluation, add:
+
+```bash
+    --report-to wandb \
+    --wandb-project ColBERT-Zero \
+    --wandb-entity rbw
+```
+
 Use `--reasoning gpt4 --use_reason_moderncolbert_gpt4_lengths` to match the GPT-4 reasoning-trace setting reported in the `Reason-ModernColBERT` model card.
 
 The BRIGHT runner:
 
 - preserves prompt-aligned query/document encoding for prompt-sensitive checkpoints such as `ColBERT-Zero`
 - caches document embeddings per model and task
+- reuses cached document embeddings across different scoring chunk sizes when `--document_cache_chunk_size` stays fixed
 - resumes from `--output_json` and skips already-finished tasks on rerun
 - accepts task subsets via `--tasks biology,earth_science,...`
+- can log per-task metrics plus final summary to W&B when `--report-to wandb` is enabled
+
+For the ReasonIR HQ pilot sweeps, the repo also includes wrappers that evaluate either:
+
+- retained `final` directories across the sweep runs:
+  - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+- retained `checkpoint-*` directories plus `final`:
+  - [`scripts/reasonir_hq_bright_checkpoint_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_checkpoint_eval.sh)
+
+These wrappers default to online/cache-filling behavior. If you want cached-only reruns, prefix them with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1`.
 
 
 ### Metrics
