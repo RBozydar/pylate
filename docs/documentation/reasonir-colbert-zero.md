@@ -2,7 +2,7 @@
 
 This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including both the local synthetic triplets path and the official HQ dataset path.
 
-For the end-to-end official HQ tuning workflow, including the exact run order for sweeps and BRIGHT evals, see:
+For the future structured W&B sweep workflow for the official HQ path, see:
 
 - [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
 
@@ -124,90 +124,109 @@ Use this path when the goal is parity with the public ReasonIR HQ training recip
 
 ### Pilot Matrix
 
-Use a three-stage pilot sweep so the results are easier to interpret.
+For the current first pass, keep using the shell-script workflow so the run order stays explicit while we are still actively comparing intermediate results.
 
-Stage 1 is a fairer batch-size comparison with roughly equal examples seen and learning rate scaled with batch size:
+The current training wrappers are:
 
 - [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
+- [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
+- [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
 
-This script keeps shared settings fixed:
+Shared defaults across the current shell workflow:
 
-- `temp=1.0`
 - `validation_size=0.01`
 - `warmup_ratio=0.1`
 - `mini_batch_size=32`
 - `save_steps=25`
 - `eval_steps=25`
 - `save_total_limit=20`
+- BRIGHT subset eval target: `biology,economics,robotics,pony`
 
-It runs:
+### Stage 1
+
+Stage 1 is a fairer batch-size comparison with roughly equal examples seen and learning rate scaled with batch size.
+
+Run:
+
+```bash
+./scripts/reasonir_hq_batch_sweep.sh
+```
+
+The 4 Stage 1 configs are:
 
 - `hq-batch-bs256-lr1e5-temp1` with `max_steps=400`
 - `hq-batch-bs512-lr2e5-temp1` with `max_steps=200`
 - `hq-batch-bs1024-lr4e5-temp1` with `max_steps=100`
 - `hq-batch-bs2048-lr8e5-temp1` with `max_steps=50`
 
-Stage 2 is a learning-rate sweep at the winning batch size:
+Current status from the first pass:
 
-- [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
+- best original Stage 1 sweep final: `hq-batch-bs2048-lr8e5-temp1` with BRIGHT subset `full_mean=8.91`
+- exploratory `bs4096` extension: `hq-batch-bs4096-lr1e4-temp1`
+- best observed checkpoint so far: `bs4096 checkpoint-5` with `full_mean=12.21`
+- `bs4096 final` is only `8.95`, so the gain over `bs2048 final` is marginal and highly checkpoint-sensitive
 
-Set `BEST_BATCH_SIZE` before running it. By default it uses `1024`.
+That means the default next step is still the `bs2048` LR sweep. Treat `bs4096` as a special short-schedule experiment unless you also tighten checkpoint cadence for later stages.
 
-It runs:
+The current Stage 2 sweep is intentionally centered higher than before so it covers the LR region that actually worked in Stage 1 at large batch sizes.
 
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e6-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e6-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e5-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e5-temp1`
+### Stage 2
 
-Stage 3 is a temperature sweep at the winning batch size and learning rate:
+Stage 2 is a learning-rate sweep at the winning batch size. Once Stage 1 BRIGHT results are reviewed, set `BEST_BATCH_SIZE` and run:
 
-- [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
+```bash
+BEST_BATCH_SIZE=<WINNER_BATCH_SIZE> ./scripts/reasonir_hq_lr_sweep.sh
+```
 
-Set both `BEST_BATCH_SIZE` and `BEST_LR` before running it.
+The Stage 2 LR values are:
 
-It runs:
+- `2e-5`
+- `5e-5`
+- `8e-5`
+- `1e-4`
 
-- `temp=0.02`
-- `temp=0.05`
-- `temp=0.1`
+### Stage 3
 
-For a BRIGHT subset comparison over produced sweep outputs, use:
+Stage 3 is a temperature sweep at the winning batch size and learning rate. Once Stage 2 BRIGHT results are reviewed, set both and run:
 
-- [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+```bash
+BEST_BATCH_SIZE=<WINNER_BATCH_SIZE> BEST_LR=<WINNER_LR> ./scripts/reasonir_hq_temp_sweep.sh
+```
 
-By default this evaluates the subset:
+The Stage 3 temperatures are:
 
-- `biology`
-- `economics`
-- `robotics`
-- `pony`
+- `0.02`
+- `0.05`
+- `0.1`
 
-It also defaults to logging each eval run to W&B as:
+### Post-hoc BRIGHT Eval
+
+If you want additional BRIGHT subset comparisons after the pilot runs finish, use:
+
+- [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh) for retained `final` directories
+- the same wrapper with `INCLUDE_CHECKPOINTS=1` for retained `checkpoint-*` plus `final`
+
+These wrappers default to W&B logging with:
 
 - project: `ColBERT-Zero`
 - entity: `rbw`
-- group: `reasonir-hq-bright-subset`
 
-Override those with `WANDB_PROJECT`, `WANDB_ENTITY`, `WANDB_GROUP`, or disable eval logging with `REPORT_TO=none`.
-
-Use `STAGE=batch`, `STAGE=lr`, `STAGE=temp`, or `STAGE=all` to choose which sweep stage to evaluate when you are not passing explicit run names.
-
-This eval wrapper also defaults to cleaning up the model-specific BRIGHT document embedding cache after each run, since sweep comparisons do not reuse document shards across different model paths. Disable that with `CLEANUP_DOCUMENT_CACHE=0` if you explicitly want cache reuse for reruns or resumes.
-
-The eval wrapper no longer forces Hugging Face offline mode. It will populate the BRIGHT cache on demand. If you want cached-only reruns, prefix the command with:
+They no longer force Hugging Face offline mode. For cached-only reruns, prefix them with:
 
 ```bash
-HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1
 ```
 
-The primary workflow is to evaluate retained `checkpoint-*` directories and `final` together by setting `INCLUDE_CHECKPOINTS=1`. Checkpoint-inclusive evals default to the W&B group `reasonir-hq-bright-checkpoints`.
+### Future Structured Path
 
-Example:
+Once the shell-script workflow is no longer the main path, the repo also has a W&B sweep-based version of the same three-stage process:
 
-```bash
-STAGE=temp BEST_BATCH_SIZE=1024 BEST_LR=1e-5 INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
+- runner: [`scripts/reasonir_hq_sweep_runner.py`](/home/rbw/repo/pylate/scripts/reasonir_hq_sweep_runner.py)
+- Stage 1 config: [`sweeps/reasonir_hq_stage1_batch.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage1_batch.yaml)
+- Stage 2 config: [`sweeps/reasonir_hq_stage2_lr.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage2_lr.yaml)
+- Stage 3 config: [`sweeps/reasonir_hq_stage3_temp.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage3_temp.yaml)
+
+Each sweep run trains with the official HQ script, evaluates the resulting `final` checkpoint on the BRIGHT subset, and logs `bright/summary/full_mean` into the same W&B run so Sweeps can optimize directly on the retrieval metric.
 
 ## Commands Used
 

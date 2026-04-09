@@ -1,17 +1,17 @@
 # ReasonIR HQ Sweep Runbook
 
-This runbook is the step-by-step workflow for tuning `ColBERT-Zero` on the official ReasonIR HQ dataset and selecting the best configuration with BRIGHT subset evals.
+This runbook is the future structured workflow for tuning `ColBERT-Zero` on the official ReasonIR HQ dataset with W&B Sweeps and selecting the best configuration from BRIGHT subset results.
+
+The current first-pass workflow in this repo is still the shell-script path documented in [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md). Use this runbook when you explicitly want to move that process into W&B Sweeps rather than replacing the in-flight shell workflow.
 
 ## Scope
 
 This covers:
 
-- Stage 1 batch-size sweep
-- Stage 1 BRIGHT subset evals on retained `checkpoint-*` plus `final`
+- Stage 1 batch sweep
 - Stage 2 learning-rate sweep
-- Stage 2 BRIGHT subset evals on retained `checkpoint-*` plus `final`
 - Stage 3 temperature sweep
-- Stage 3 BRIGHT subset evals on retained `checkpoint-*` plus `final`
+- optional post-hoc BRIGHT subset evals on retained `checkpoint-*` plus `final`
 - W&B review and run inspection
 
 It assumes the repo-local defaults already in use on this machine:
@@ -21,6 +21,24 @@ It assumes the repo-local defaults already in use on this machine:
 - BRIGHT cache: `/tmp/pylate-bright-cache`
 - W&B project: `ColBERT-Zero`
 - W&B entity: `rbw`
+
+## Files
+
+- sweep runner:
+  - [`scripts/reasonir_hq_sweep_runner.py`](/home/rbw/repo/pylate/scripts/reasonir_hq_sweep_runner.py)
+- sweep configs:
+  - [`sweeps/reasonir_hq_stage1_batch.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage1_batch.yaml)
+  - [`sweeps/reasonir_hq_stage2_lr.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage2_lr.yaml)
+  - [`sweeps/reasonir_hq_stage3_temp.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage3_temp.yaml)
+- current shell-script workflow:
+  - [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
+  - [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
+  - [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
+- post-hoc BRIGHT eval wrappers:
+  - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+  - the same wrapper with `INCLUDE_CHECKPOINTS=1`
+- W&B inspection helper:
+  - [`scripts/wandb_project_runs.py`](/home/rbw/repo/pylate/scripts/wandb_project_runs.py)
 
 ## Before You Start
 
@@ -36,56 +54,73 @@ Useful inspection command:
 uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10
 ```
 
-## Step 1: Run The Batch Sweep
+## How The Sweep Runner Works
 
-Run:
+Each W&B sweep run:
+
+- trains with the official HQ script
+- saves checkpoints every `25` steps
+- runs internal HQ validation every `25` steps
+- retains up to `20` checkpoints
+- evaluates the resulting `final` checkpoint on the BRIGHT subset
+- logs `bright/summary/full_mean` into the same W&B run
+
+That means the sweep selection metric already lives on the sweep runs themselves. You do not need a second wrapper just to compare final checkpoints.
+
+## Current Manual First Pass
+
+If you are continuing the current in-flight workflow, do not start here with `wandb sweep`.
+
+Use the shell scripts instead:
 
 ```bash
 ./scripts/reasonir_hq_batch_sweep.sh
+BEST_BATCH_SIZE=<WINNER_BATCH_SIZE> ./scripts/reasonir_hq_lr_sweep.sh
+BEST_BATCH_SIZE=<WINNER_BATCH_SIZE> BEST_LR=<WINNER_LR> ./scripts/reasonir_hq_temp_sweep.sh
+./scripts/reasonir_hq_bright_subset_eval.sh
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-What this does:
+Current Stage 1 status in this repo:
 
-- trains 4 runs
-- uses `validation_size=0.01`
-- saves every `25` steps
-- runs internal validation every `25` steps
-- keeps up to `20` checkpoints
+- best original sweep final: `hq-batch-bs2048-lr8e5-temp1` at `8.91`
+- exploratory `bs4096` extension best checkpoint: `hq-batch-bs4096-lr1e4-temp1 checkpoint-5` at `12.21`
+- exploratory `bs4096` final: `8.95`
 
-The 4 runs are:
+That makes `bs2048` the safer default for the scripted LR sweep, unless you intentionally redesign the later stages for `bs4096` with shorter runs and denser checkpointing.
+
+The numbered steps below are only for the future W&B Sweeps workflow.
+
+## Sweep Step 1: Run The Batch Sweep
+
+Initialize the Stage 1 sweep:
+
+```bash
+uv run wandb sweep --project ColBERT-Zero sweeps/reasonir_hq_stage1_batch.yaml
+```
+
+Then start one or more agents:
+
+```bash
+uv run wandb agent rbw/ColBERT-Zero/<sweep-id>
+```
+
+The original Stage 1 configs are:
 
 - `hq-batch-bs256-lr1e5-temp1`
 - `hq-batch-bs512-lr2e5-temp1`
 - `hq-batch-bs1024-lr4e5-temp1`
 - `hq-batch-bs2048-lr8e5-temp1`
 
-## Step 2: Evaluate Batch Sweep Outputs
+An exploratory extension, `hq-batch-bs4096-lr1e4-temp1`, was evaluated separately and peaked very early.
 
-After Stage 1 finishes, run:
+## Sweep Step 2: Review Stage 1 Results
 
-```bash
-STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
+Use:
 
-For Stage 1, do not set `BEST_BATCH_SIZE` or `BEST_LR`. The script will:
-
-- evaluate retained `checkpoint-*` directories for the 4 Stage 1 runs
-- evaluate `final` for the same 4 runs
-
-By default this evaluates:
-
-- `biology`
-- `economics`
-- `robotics`
-- `pony`
-
-## Step 3: Review Stage 1 Results
-
-Use three sources:
-
-1. W&B training runs
-2. W&B BRIGHT eval runs
-3. JSON outputs under `/home/rbw/repo/pylate/output`
+1. the Stage 1 sweep runs themselves
+2. optional checkpoint BRIGHT evals if you care about early peaks
+3. local JSON outputs under `/home/rbw/repo/pylate/output`
 
 Useful W&B queries:
 
@@ -101,105 +136,111 @@ uv run python scripts/wandb_project_runs.py \
 uv run python scripts/wandb_project_runs.py \
   --entity rbw \
   --project ColBERT-Zero \
-  --group reasonir-hq-bright-subset \
-  --limit 20
-```
-
-```bash
-uv run python scripts/wandb_project_runs.py \
-  --entity rbw \
-  --project ColBERT-Zero \
   --group reasonir-hq-bright-checkpoints \
   --limit 20
 ```
 
 Selection rule:
 
-- choose by BRIGHT subset quality first
-- use training stability and throughput as tie-breakers
+- choose by `bright/summary/full_mean` first
+- use checkpoint trajectory, training stability, and throughput as tie-breakers
 
-## Step 4: Pick The Best Batch Size
+Specific caution for `bs4096`:
 
-Once Stage 1 is reviewed, choose:
+- the best observed result occurs at `checkpoint-5`, not at `final`
+- do not carry `bs4096` into later stages with the default `MAX_STEPS=100` and `SAVE_STEPS=25` unchanged
 
-```bash
-export BEST_BATCH_SIZE=<winner>
-```
+## Optional: Evaluate Stage 1 Checkpoints
 
-Example:
-
-```bash
-export BEST_BATCH_SIZE=1024
-```
-
-## Step 5: Run The LR Sweep
-
-Run:
+If you want BRIGHT subset scores for retained checkpoints as well as `final`, run:
 
 ```bash
-BEST_BATCH_SIZE=$BEST_BATCH_SIZE ./scripts/reasonir_hq_lr_sweep.sh
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh \
+  hq-batch-bs256-lr1e5-temp1 \
+  hq-batch-bs512-lr2e5-temp1 \
+  hq-batch-bs1024-lr4e5-temp1 \
+  hq-batch-bs2048-lr8e5-temp1
 ```
 
-This produces:
+Those evals log to W&B group `reasonir-hq-bright-checkpoints`.
 
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e6-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e6-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr1e5-temp1`
-- `hq-lr-bs<BEST_BATCH_SIZE>-lr5e5-temp1`
+## Sweep Step 3: Pick The Best Batch Size
 
-## Step 6: Evaluate LR Sweep Outputs
+Once Stage 1 is reviewed, update [`reasonir_hq_stage2_lr.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage2_lr.yaml):
 
-Run:
+- set `batch_size.value` to the winning batch size
+
+## Sweep Step 4: Run The LR Sweep
+
+Initialize the Stage 2 sweep:
 
 ```bash
-STAGE=lr BEST_BATCH_SIZE=$BEST_BATCH_SIZE INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
+uv run wandb sweep --project ColBERT-Zero sweeps/reasonir_hq_stage2_lr.yaml
 ```
 
-At this point the script will evaluate retained `checkpoint-*` directories and `final` for the Stage 2 LR runs at the chosen batch size.
-
-## Step 7: Pick The Best LR
-
-Choose:
+Then start an agent:
 
 ```bash
-export BEST_LR=<winner>
+uv run wandb agent rbw/ColBERT-Zero/<sweep-id>
 ```
 
-Example:
+The Stage 2 LR values are:
+
+- `2e-5`
+- `5e-5`
+- `8e-5`
+- `1e-4`
+
+## Sweep Step 5: Review Stage 2 Results
+
+Use the same pattern as Stage 1:
+
+- sweep-run `bright/summary/full_mean` first
+- optional checkpoint BRIGHT evals second
+- training stability and throughput as tie-breakers
+
+Optional checkpoint eval:
 
 ```bash
-export BEST_LR=1e-5
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh \
+  hq-lr-bs<WINNER_BATCH>-lr1e6-temp1 \
+  hq-lr-bs<WINNER_BATCH>-lr5e6-temp1 \
+  hq-lr-bs<WINNER_BATCH>-lr1e5-temp1 \
+  hq-lr-bs<WINNER_BATCH>-lr5e5-temp1
 ```
 
-## Step 8: Run The Temperature Sweep
+## Sweep Step 6: Pick The Best LR
 
-Run:
+Once Stage 2 is reviewed, update [`reasonir_hq_stage3_temp.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage3_temp.yaml):
+
+- set `batch_size.value`
+- set `learning_rate.value`
+
+## Sweep Step 7: Run The Temperature Sweep
+
+Initialize the Stage 3 sweep:
 
 ```bash
-BEST_BATCH_SIZE=$BEST_BATCH_SIZE BEST_LR=$BEST_LR ./scripts/reasonir_hq_temp_sweep.sh
+uv run wandb sweep --project ColBERT-Zero sweeps/reasonir_hq_stage3_temp.yaml
 ```
 
-This produces:
-
-- `hq-temp-bs<BEST_BATCH_SIZE>-lr${BEST_LR//./}-temp002`
-- `hq-temp-bs<BEST_BATCH_SIZE>-lr${BEST_LR//./}-temp005`
-- `hq-temp-bs<BEST_BATCH_SIZE>-lr${BEST_LR//./}-temp01`
-
-## Step 9: Evaluate Temperature Sweep Outputs
-
-Run:
+Then start an agent:
 
 ```bash
-STAGE=temp BEST_BATCH_SIZE=$BEST_BATCH_SIZE BEST_LR=$BEST_LR INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
+uv run wandb agent rbw/ColBERT-Zero/<sweep-id>
 ```
 
-Now the script will evaluate retained `checkpoint-*` directories and `final` for the Stage 3 temp runs at the chosen batch size and LR.
+The Stage 3 temperatures are:
 
-## Step 10: Pick The Winner
+- `0.02`
+- `0.05`
+- `0.1`
+
+## Sweep Step 8: Pick The Winner
 
 Final selection should be based on:
 
-- BRIGHT subset `final` performance
+- BRIGHT subset `final` performance from the sweep runs
 - checkpoint trajectory if a run peaked early
 - training stability
 - runtime and throughput
@@ -208,33 +249,16 @@ Do not choose purely from training loss.
 
 ## Optional Flags
 
-Disable W&B during eval:
+Disable W&B during post-hoc eval:
 
 ```bash
 REPORT_TO=none ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-Keep BRIGHT document caches between eval runs:
-
-```bash
-CLEANUP_DOCUMENT_CACHE=0 ./scripts/reasonir_hq_bright_subset_eval.sh
-```
-
-If you want a finals-only pass for any stage, omit `INCLUDE_CHECKPOINTS=1`.
-
 Force cached-only BRIGHT reruns:
 
 ```bash
-HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0 ./scripts/reasonir_hq_bright_subset_eval.sh
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-## Related Files
-
-- [`examples/train/ColBERT-zero/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reason_moderncolbert.py)
-- [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
-- [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
-- [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
-- [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
-- [`scripts/wandb_project_runs.py`](/home/rbw/repo/pylate/scripts/wandb_project_runs.py)
-- [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md)
-- [`BRIGHT_SUBSET_RUNBOOK.md`](/home/rbw/repo/pylate/BRIGHT_SUBSET_RUNBOOK.md)
+If you are still in the first manual pass, keep using the shell scripts and treat this runbook as future infrastructure.

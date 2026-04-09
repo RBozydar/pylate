@@ -1,0 +1,57 @@
+program: scripts/reasonir_hq_sweep_runner.py
+name: reasonir-hq-stage3-temp
+method: grid
+metric:
+  goal: maximize
+  name: bright/summary/full_mean
+parameters:
+  stage:
+    value: temp
+  batch_size:
+    value: 1024
+  max_steps:
+    value: 100
+  learning_rate:
+    value: !!float 1e-5
+  temperature:
+    values:
+      - 0.02
+      - 0.05
+      - 0.1
+  validation_size:
+    value: 0.01
+  warmup_ratio:
+    value: 0.1
+  mini_batch_size:
+    value: 32
+  num_workers:
+    value: 4
+  logging_steps:
+    value: 1
+  save_steps:
+    value: 25
+  eval_steps:
+    value: 25
+  save_total_limit:
+    value: 20
+  tasks:
+    value: biology,economics,robotics,pony
+  reasoning:
+    value: none
+  query_batch_size:
+    value: 16
+  query_encode_batch_size:
+    value: 32
+  document_batch_size:
+    value: 128
+  corpus_chunk_size:
+    value: 1024
+  top_k:
+    value: 1000
+command:
+  - ${env}
+  - uv
+  - run
+  - python
+  - ${program}
+  - ${args_no_boolean_flags}

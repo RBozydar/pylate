@@ -17,7 +17,7 @@ EVAL_STEPS="${EVAL_STEPS:-$SAVE_STEPS}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-20}"
 REPORT_TO="${REPORT_TO:-wandb}"
 TEMPERATURE="${TEMPERATURE:-1.0}"
-BEST_BATCH_SIZE="${BEST_BATCH_SIZE:-1024}"
+BEST_BATCH_SIZE="${BEST_BATCH_SIZE:-2048}"
 MAX_STEPS="${MAX_STEPS:-100}"
 
 cd /home/rbw/repo/pylate
@@ -52,7 +52,7 @@ run_sweep_entry() {
     --output-dir "${output_dir}"
 }
 
-run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr1e6-temp1" 1e-6
-run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr5e6-temp1" 5e-6
-run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr1e5-temp1" 1e-5
+run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr2e5-temp1" 2e-5
 run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr5e5-temp1" 5e-5
+run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr8e5-temp1" 8e-5
+run_sweep_entry "hq-lr-bs${BEST_BATCH_SIZE}-lr1e4-temp1" 1e-4

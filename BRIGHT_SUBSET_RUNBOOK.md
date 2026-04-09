@@ -4,7 +4,7 @@ This file captures the raw-query BRIGHT subset evaluation workflows used for:
 
 - the local `ColBERT-Zero` base checkpoint
 - the local fine-tuned `ReasonIR` checkpoint
-- the official ReasonIR HQ pilot sweeps and checkpoint comparisons
+- the official ReasonIR HQ shell-script pilots and checkpoint comparisons
 
 ## Scope
 
@@ -38,7 +38,7 @@ Evaluation mode:
 
 The filenames still say `partial`, but both subset runs completed successfully.
 
-For the official HQ pilot sweeps:
+For the official HQ pilot runs:
 
 - final-model subset evals are written as:
   - `/home/rbw/repo/pylate/output/<run-name>-bright-subset.json`
@@ -82,12 +82,12 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run python examples/evaluation/bright_
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-raw-partial.json
 ```
 
-### HQ pilot sweep outputs
+### HQ pilot outputs
 
-Use the unified wrapper to evaluate retained `checkpoint-*` directories plus `final` for a given sweep stage:
+For the current shell-script workflow, evaluate retained `final` directories with:
 
 ```bash
-STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
+./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
 By default this evaluates the 4-task subset:
@@ -101,18 +101,30 @@ and logs evals to W&B with:
 
 - project: `ColBERT-Zero`
 - entity: `rbw`
-- group: `reasonir-hq-bright-checkpoints`
+- group: `reasonir-hq-bright-subset`
+
+To evaluate retained `checkpoint-*` directories plus `final`, add:
+
+```bash
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh
+```
+
+To restrict evaluation to the current batch-stage runs, add:
+
+```bash
+STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
+```
 
 To restrict evaluation to a single training run:
 
 ```bash
-INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
+./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
 ```
 
-If you want finals only for a stage, omit `INCLUDE_CHECKPOINTS=1`:
+To evaluate one run's retained checkpoints as well as `final`:
 
 ```bash
-STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh
+INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh hq-batch-bs256-lr1e5-temp1
 ```
 
 Disable eval logging with:
@@ -127,7 +139,7 @@ The wrapper scripts do not force Hugging Face offline mode. They will fetch miss
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
 ```
 
-By default the wrapper scripts clean up the model-specific BRIGHT document cache after each eval run. That keeps one-off sweep comparisons from leaving behind tens of GiB of document shards per model. Set `CLEANUP_DOCUMENT_CACHE=0` if you want to retain those caches for reuse.
+By default the wrapper cleans up the model-specific BRIGHT document cache after each eval run. That keeps one-off pilot comparisons from leaving behind tens of GiB of document shards per model. Set `CLEANUP_DOCUMENT_CACHE=0` if you want to retain those caches for reuse.
 
 ## Resume Behavior
 

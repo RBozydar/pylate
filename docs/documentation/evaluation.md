@@ -190,12 +190,6 @@ To log eval metrics to W&B during BRIGHT evaluation, add:
     --wandb-entity rbw
 ```
 
-To delete the model-specific BRIGHT document cache after a direct evaluator run, add:
-
-```bash
-    --cleanup-document-cache
-```
-
 Use `--reasoning gpt4 --use_reason_moderncolbert_gpt4_lengths` to match the GPT-4 reasoning-trace setting reported in the `Reason-ModernColBERT` model card.
 
 The BRIGHT runner:
@@ -207,18 +201,17 @@ The BRIGHT runner:
 - accepts task subsets via `--tasks biology,earth_science,...`
 - can log per-task metrics plus final summary to W&B when `--report-to wandb` is enabled
 
-For the ReasonIR HQ pilot sweeps, the repo also includes wrappers that evaluate either:
+For the current ReasonIR HQ shell-script pilots, the repo also includes wrappers that evaluate either:
 
 - retained `final` directories across the sweep runs:
   - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+- retained `checkpoint-*` directories plus `final` when run with `INCLUDE_CHECKPOINTS=1`
+- a future fully sweep-driven train+eval workflow:
+  - [`scripts/reasonir_hq_sweep_runner.py`](/home/rbw/repo/pylate/scripts/reasonir_hq_sweep_runner.py)
 
-The sweep eval wrapper supports:
+The current shell-script path is still the active workflow for first-pass tuning. The sweep runner is prepared for a future migration to W&B Sweeps; it trains with the official HQ script, evaluates the resulting `final` checkpoint on the BRIGHT subset, and logs `bright/summary/full_mean` into the same W&B run so Sweeps can optimize directly on the retrieval metric.
 
-- `STAGE=batch|lr|temp|all` to choose which run family to evaluate
-- `INCLUDE_CHECKPOINTS=1` to traverse retained `checkpoint-*` directories and `final` in one pass
-- `INCLUDE_FINAL=0` if you explicitly want checkpoint-only evals
-
-It defaults to online/cache-filling behavior and cleans up the model-specific document cache after each eval. If you want cached-only reruns with cache reuse, prefix it with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0`.
+The post-hoc eval wrappers default to online/cache-filling behavior. If you want cached-only reruns, prefix them with `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1`.
 
 
 ### Metrics

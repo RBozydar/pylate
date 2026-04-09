@@ -16,6 +16,16 @@ The relevant work in this branch is:
   - [`examples/evaluation/nanobeir_sweep.py`](/home/rbw/repo/pylate/examples/evaluation/nanobeir_sweep.py)
 - BRIGHT evaluator matching the ReasonIR harness semantics, but using PyLate MaxSim:
   - [`examples/evaluation/bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py)
+- current shell-script HQ tuning workflow:
+  - [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
+  - [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)
+  - [`scripts/reasonir_hq_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_temp_sweep.sh)
+  - [`scripts/reasonir_hq_bright_subset_eval.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_bright_subset_eval.sh)
+- W&B sweep runner and configs for official HQ tuning:
+  - [`scripts/reasonir_hq_sweep_runner.py`](/home/rbw/repo/pylate/scripts/reasonir_hq_sweep_runner.py)
+  - [`sweeps/reasonir_hq_stage1_batch.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage1_batch.yaml)
+  - [`sweeps/reasonir_hq_stage2_lr.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage2_lr.yaml)
+  - [`sweeps/reasonir_hq_stage3_temp.yaml`](/home/rbw/repo/pylate/sweeps/reasonir_hq_stage3_temp.yaml)
 - runbook/docs:
   - [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
   - [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md)
@@ -57,12 +67,23 @@ On the new machine, pass explicit overrides:
     - `--report-to wandb`
     - `--wandb-project ColBERT-Zero`
     - `--wandb-entity rbw`
-    - `--cleanup-document-cache` to remove model-specific BRIGHT doc shards after eval
   - inspect recent W&B runs from the terminal with:
     - `uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10`
-  - evaluate sweep finals or checkpoints with the unified wrapper:
-    - preferred: `STAGE=batch INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh`
-    - finals only: `STAGE=batch ./scripts/reasonir_hq_bright_subset_eval.sh`
+  - current HQ tuning workflow still uses the shell scripts:
+    - Stage 1: `./scripts/reasonir_hq_batch_sweep.sh`
+    - Stage 2: `BEST_BATCH_SIZE=... ./scripts/reasonir_hq_lr_sweep.sh`
+    - Stage 3: `BEST_BATCH_SIZE=... BEST_LR=... ./scripts/reasonir_hq_temp_sweep.sh`
+    - BRIGHT finals: `./scripts/reasonir_hq_bright_subset_eval.sh`
+    - BRIGHT checkpoints: `INCLUDE_CHECKPOINTS=1 ./scripts/reasonir_hq_bright_subset_eval.sh`
+  - current Stage 1 status:
+    - best original sweep final: `hq-batch-bs2048-lr8e5-temp1` with BRIGHT subset `full_mean=8.91`
+    - exploratory `bs4096` extension best checkpoint: `hq-batch-bs4096-lr1e4-temp1 checkpoint-5` with `full_mean=12.21`
+    - exploratory `bs4096` final: `8.95`
+    - recommendation: keep `bs2048` as the default Stage 2 scripted path unless the later stages are reworked for shorter `bs4096` runs with denser checkpointing
+    - Stage 2 LR grid is now centered on the high-LR region that worked in Stage 1: `2e-5`, `5e-5`, `8e-5`, `1e-4`
+  - W&B Sweeps are prepared for a future structured workflow:
+    - initialize: `uv run wandb sweep --project ColBERT-Zero sweeps/reasonir_hq_stage1_batch.yaml`
+    - run agent: `uv run wandb agent rbw/ColBERT-Zero/<sweep-id>`
 
 ## Training Result
 
