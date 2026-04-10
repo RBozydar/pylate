@@ -170,6 +170,25 @@ That means the default next step is still the `bs2048` LR sweep. Treat `bs4096` 
 
 The current Stage 2 sweep is intentionally centered higher than before so it covers the LR region that actually worked in Stage 1 at large batch sizes.
 
+Updated reasoning-trace takeaway:
+
+- the earlier 4-task GPT-4 gate correctly showed that raw-query Stage 1 ranking does not transfer cleanly
+- the full 12-task GPT-4 BRIGHT comparison still ranks base first, but the gap is now small enough to justify continuing tuning
+- full-BRIGHT GPT-4 ranking:
+  - base `ColBERT-Zero`: `26.51`
+  - `bs2048 checkpoint-50`: `26.01`
+  - `bs4096 checkpoint-5`: `25.96`
+
+Reviews:
+
+- preliminary 4-task gate: [`reasonir-hq-stage1-gpt4-gate-review.md`](/home/rbw/repo/pylate/output/reasonir-hq-stage1-gpt4-gate-review.md)
+- full 12-task comparison: [`reasonir-hq-full-gpt4-review.md`](/home/rbw/repo/pylate/output/reasonir-hq-full-gpt4-review.md)
+
+So:
+
+- if your target regime is raw queries, continue with the Stage 2 sweep below
+- if your target regime is GPT-4 reasoning traces, continue with Stage 2 using `bs2048` as the default anchor and keep base `ColBERT-Zero` as the control model
+
 ### Stage 2
 
 Stage 2 is a learning-rate sweep at the winning batch size. Once Stage 1 BRIGHT results are reviewed, set `BEST_BATCH_SIZE` and run:
@@ -394,7 +413,8 @@ uv run python examples/evaluation/bright_reasonir.py \
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-raw.json
 ```
 
@@ -410,11 +430,13 @@ uv run python examples/evaluation/bright_reasonir.py \
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-gpt4.json
 ```
 
 Operational note: exhaustive BRIGHT MaxSim scoring is expensive. On the 3090, the largest tasks such as `earth_science` and `stackoverflow` were slow enough that moving the sweep to a 5090 was judged worthwhile.
+For large runs on this host, prefer `/mnt/ml_models/cache/pylate-bright-cache` over `/tmp` and keep `--cleanup-document-cache` enabled so model-specific BRIGHT shards are removed even after an interrupted run.
 
 ### NanoBEIR sweep
 

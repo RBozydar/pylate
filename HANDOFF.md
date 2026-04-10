@@ -81,6 +81,13 @@ On the new machine, pass explicit overrides:
     - exploratory `bs4096` final: `8.95`
     - recommendation: keep `bs2048` as the default Stage 2 scripted path unless the later stages are reworked for shorter `bs4096` runs with denser checkpointing
     - Stage 2 LR grid is now centered on the high-LR region that worked in Stage 1: `2e-5`, `5e-5`, `8e-5`, `1e-4`
+  - GPT-4 reasoning status:
+    - preliminary 4-task gate kept base in first place
+    - full 12-task BRIGHT GPT-4 comparison:
+      - base `ColBERT-Zero`: `26.51`
+      - `hq-batch-bs2048-lr8e5-temp1 checkpoint-50`: `26.01`
+      - `hq-batch-bs4096-lr1e4-temp1 checkpoint-5`: `25.96`
+    - implication: raw-query Stage 1 ranking still does not transfer cleanly to reasoning traces, but the full-result gap is now small enough that continuing with a `bs2048` Stage 2 LR sweep is defensible
   - W&B Sweeps are prepared for a future structured workflow:
     - initialize: `uv run wandb sweep --project ColBERT-Zero sweeps/reasonir_hq_stage1_batch.yaml`
     - run agent: `uv run wandb agent rbw/ColBERT-Zero/<sweep-id>`
@@ -182,6 +189,7 @@ Important caveat:
 If moving machines and you can copy caches, the useful ones are:
 
 - `/tmp/pylate-hf-cache`
+- `/mnt/ml_models/cache/pylate-bright-cache`
 - `/tmp/pylate-bright-cache`
 
 If those are not copied, the scripts still work; they just rebuild data and document embeddings.

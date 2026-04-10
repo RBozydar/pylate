@@ -23,7 +23,11 @@ DEFAULT_TRAIN_SCRIPT = Path("examples/train/ColBERT-zero/reason_moderncolbert.py
 DEFAULT_EVAL_SCRIPT = Path("examples/evaluation/bright_reasonir.py")
 DEFAULT_OUTPUT_ROOT = Path("/home/rbw/repo/pylate/output")
 DEFAULT_DATASET_CACHE_DIR = Path("/tmp/pylate-hf-cache")
-DEFAULT_BRIGHT_CACHE_DIR = Path("/tmp/pylate-bright-cache")
+DEFAULT_BRIGHT_CACHE_DIR = (
+    Path("/mnt/ml_models/cache/pylate-bright-cache")
+    if Path("/mnt/ml_models/cache").is_dir()
+    else Path("/tmp/pylate-bright-cache")
+)
 DEFAULT_TASKS = "biology,economics,robotics,pony"
 DEFAULT_REASONING = "none"
 DEFAULT_WANDB_PROJECT = "ColBERT-Zero"
