@@ -18,6 +18,7 @@ QUERY_ENCODE_BATCH_SIZE="${QUERY_ENCODE_BATCH_SIZE:-32}"
 DOCUMENT_BATCH_SIZE="${DOCUMENT_BATCH_SIZE:-256}"
 CORPUS_CHUNK_SIZE="${CORPUS_CHUNK_SIZE:-256}"
 DOCUMENT_CACHE_CHUNK_SIZE="${DOCUMENT_CACHE_CHUNK_SIZE:-${CORPUS_CHUNK_SIZE}}"
+CLEANUP_DOCUMENT_CACHE="${CLEANUP_DOCUMENT_CACHE:-1}"
 TOP_K="${TOP_K:-1000}"
 WANDB_PROJECT="${WANDB_PROJECT:-ColBERT-Zero}"
 WANDB_ENTITY="${WANDB_ENTITY:-rbw}"
@@ -75,9 +76,12 @@ run_eval() {
     --top_k "${TOP_K}"
     --cache_dir "${CACHE_DIR}"
     --output_json "${OUTPUT_JSON}"
-    --cleanup-document-cache
     --report-to "${REPORT_TO}"
   )
+
+  if [[ "${CLEANUP_DOCUMENT_CACHE}" == "1" ]]; then
+    args+=(--cleanup-document-cache)
+  fi
 
   if [[ -n "${tasks}" ]]; then
     args+=(--tasks "${tasks}")
