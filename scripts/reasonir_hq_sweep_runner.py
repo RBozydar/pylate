@@ -193,6 +193,16 @@ def parse_args() -> argparse.Namespace:
         help="Checkpoint retention count. Default: 20.",
     )
     parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Enable fp16 mixed precision for training.",
+    )
+    parser.add_argument(
+        "--no-bf16",
+        action="store_true",
+        help="Disable bf16 mixed precision for training.",
+    )
+    parser.add_argument(
         "--tasks",
         type=str,
         default=DEFAULT_TASKS,
@@ -421,6 +431,8 @@ def resolve_runtime_configuration(
         "save_steps": save_steps,
         "eval_steps": int(eval_steps),
         "save_total_limit": int(resolve_config_value(config, args, "save_total_limit")),
+        "fp16": bool(resolve_config_value(config, args, "fp16", False)),
+        "no_bf16": bool(resolve_config_value(config, args, "no_bf16", False)),
         "tasks": str(resolve_config_value(config, args, "tasks")),
         "reasoning": str(resolve_config_value(config, args, "reasoning")),
         "query_batch_size": int(resolve_config_value(config, args, "query_batch_size")),
@@ -462,6 +474,8 @@ def base_wandb_config(args: argparse.Namespace) -> dict[str, Any]:
         "save_steps": args.save_steps,
         "eval_steps": args.eval_steps,
         "save_total_limit": args.save_total_limit,
+        "fp16": args.fp16,
+        "no_bf16": args.no_bf16,
         "tasks": args.tasks,
         "reasoning": args.reasoning,
         "query_batch_size": args.query_batch_size,
@@ -540,6 +554,16 @@ def build_training_argv(runtime: dict[str, Any]) -> list[str]:
         str(runtime["save_steps"]),
         "--save-total-limit",
         str(runtime["save_total_limit"]),
+        *(
+            ["--fp16"]
+            if runtime["fp16"]
+            else []
+        ),
+        *(
+            ["--no-bf16"]
+            if runtime["no_bf16"]
+            else []
+        ),
         "--report-to",
         "wandb",
         "--wandb-project",
