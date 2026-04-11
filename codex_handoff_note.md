@@ -5,15 +5,17 @@ This note is the fast handoff for continuing the mixed `ReasonIR` + `ColBERT-Zer
 ## Current State
 
 - repo branch: `reasonir-colbert-zero-handoff`
-- latest local commit: `0774f81` (`Add mixed ReasonIR training workflow`)
-- important caveat: that commit is local only right now
-- attempted push failed with:
-  - `Permission to lightonai/pylate.git denied to RBozydar.`
+- latest pushed commits on this branch:
+  - `0774f81` `Add mixed ReasonIR training workflow`
+  - `b3d0980` `Document mixed training handoff`
+  - `f7b87ff` `Support multi-config BRIGHT eval wrapper`
+- current best mixed result:
+  - run: `reasonir-mixed-bs2048-lr8e5`
+  - full BRIGHT with GPT-4 reasoning traces: `27.12`
+  - base `ColBERT-Zero`: `26.51`
+  - delta: `+0.61`
 
-So:
-
-- if the next machine is using the same shared repo checkout, it already has the files
-- if it uses a separate clone, it will not see commit `0774f81` until someone with repo access pushes it
+So the mixed dataset path is currently the best-performing GPT-trace configuration in this branch.
 
 ## Primary Files
 
@@ -25,6 +27,8 @@ So:
   - [`examples/train/ColBERT-zero/reasonir.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reasonir.py)
 - reusable full GPT-trace BRIGHT eval wrapper:
   - [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
+- mixed LR sweep launcher:
+  - [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh)
 - broader mixed-data notes:
   - [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md)
 - compact historical context:
@@ -48,6 +52,7 @@ If the next Codex instance only reads one file first, it should read:
 - updated the local training script so `--data-root` prefers `/mnt/ml_models/datasets/ReasonIR/synthetic_data`
 - documented the mixed training flow
 - made the full BRIGHT GPT-trace wrapper reusable via env vars
+- added the mixed `bs=2048` lower-LR sweep launcher
 
 ## Staged Dataset
 
@@ -85,14 +90,26 @@ Important caveat:
 - the `Dzeniks/hover` dataset mirror does not expose hop count
 - the builder therefore falls back to label-balanced HoVer sampling, not explicit `2/3/4`-hop stratification
 
-## Planned Training Run
+## Next Planned Training Step
 
-The first full mixed-data run to execute on the stronger machine is:
+The next step is a lower-LR mixed sweep at `bs=2048`, using:
+
+- `5e-6`
+- `1e-5`
+- `3e-5`
+- `5e-5`
+
+Launcher:
+
+```bash
+./scripts/reasonir_mixed_lr_sweep.sh
+```
+
+Defaults baked into that script:
 
 - dataset: `mixed/hq_gen/balanced-v1`
 - `validation_size=0.01`
 - `epochs=3`
-- `lr=8e-5`
 - `bs=2048`
 - `eval_bs=2048`
 - `mini_batch_size=32`
@@ -100,36 +117,16 @@ The first full mixed-data run to execute on the stronger machine is:
 - `eval_steps=5`
 - `logging_steps=1`
 - `save_total_limit=20`
-- run name: `reasonir-mixed-bs2048-lr8e5`
 
-Training command:
+If the LR list needs to change without editing the script:
 
 ```bash
-uv run python -u examples/train/ColBERT-zero/reasonir.py \
-  --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data \
-  --datasets mixed \
-  --prompt-id hq_gen \
-  --generator balanced-v1 \
-  --validation-size 0.01 \
-  --epochs 3 \
-  --lr 8e-5 \
-  --bs 2048 \
-  --eval-bs 2048 \
-  --mini-batch-size 32 \
-  --fp16 \
-  --num-workers 4 \
-  --save-steps 5 \
-  --eval-steps 5 \
-  --logging-steps 1 \
-  --save-total-limit 20 \
-  --run-name reasonir-mixed-bs2048-lr8e5 \
-  --dataset-cache-dir /tmp/pylate-hf-cache \
-  --output-dir /home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5
+LR_VALUES=5e-6,8e-6,1e-5,3e-5 ./scripts/reasonir_mixed_lr_sweep.sh
 ```
 
 ## Critical Operational Note
 
-Do **not** launch the above from an attached terminal.
+Do **not** launch the sweep or any rerun from an attached terminal.
 
 What happened here:
 
@@ -151,36 +148,23 @@ Interpretation:
 Preferred:
 
 ```bash
-tmux new -s reasonir-mixed
+tmux new -s reasonir-mixed-lr
 ```
 
-Then run the training command from the runbook and detach with `Ctrl-b d`.
+Then run:
+
+```bash
+./scripts/reasonir_mixed_lr_sweep.sh
+```
+
+Detach with `Ctrl-b d`.
 
 Alternative:
 
 ```bash
 mkdir -p /home/rbw/repo/pylate/output/logs
-nohup uv run python -u examples/train/ColBERT-zero/reasonir.py \
-  --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data \
-  --datasets mixed \
-  --prompt-id hq_gen \
-  --generator balanced-v1 \
-  --validation-size 0.01 \
-  --epochs 3 \
-  --lr 8e-5 \
-  --bs 2048 \
-  --eval-bs 2048 \
-  --mini-batch-size 32 \
-  --fp16 \
-  --num-workers 4 \
-  --save-steps 5 \
-  --eval-steps 5 \
-  --logging-steps 1 \
-  --save-total-limit 20 \
-  --run-name reasonir-mixed-bs2048-lr8e5 \
-  --dataset-cache-dir /tmp/pylate-hf-cache \
-  --output-dir /home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5 \
-  > /home/rbw/repo/pylate/output/logs/reasonir-mixed-bs2048-lr8e5.log 2>&1 &
+nohup ./scripts/reasonir_mixed_lr_sweep.sh \
+  > /home/rbw/repo/pylate/output/logs/reasonir-mixed-lr-bs2048.log 2>&1 &
 ```
 
 ## W&B
@@ -197,7 +181,7 @@ Quick inspection command:
 uv run python scripts/wandb_project_runs.py \
   --entity rbw \
   --project ColBERT-Zero \
-  --name-contains reasonir-mixed-bs2048-lr8e5 \
+  --name-contains reasonir-mixed-lr-bs2048 \
   --limit 5 \
   --history-tail 5
 ```
@@ -206,7 +190,7 @@ uv run python scripts/wandb_project_runs.py \
 
 The reusable wrapper is ready.
 
-Use it for the mixed final checkpoint:
+Use it for the completed mixed baseline final checkpoint:
 
 ```bash
 MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \
@@ -254,15 +238,25 @@ The wrapper uses the stable full-eval settings from the earlier BRIGHT work:
 - `top_k=1000`
 - `cache_dir=/mnt/ml_models/cache/pylate-bright-cache`
 
+For LR sweep winners, swap in the selected output path, for example:
+
+```bash
+MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5/final \
+OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full.json \
+RUN_NAME=eval-reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full \
+WANDB_GROUP=reasonir-mixed-gpt4-full \
+bash scripts/run_full_bright_gpt4_eval.sh
+```
+
 ## If The Next Codex Instance Needs To Verify Readiness
 
 Suggested order:
 
 1. Read [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 2. Confirm the staged dataset exists under `/mnt`
-3. Confirm whether commit `0774f81` is visible in that checkout
-4. Launch the mixed run detached on the stronger machine
-5. After training, run the reusable full BRIGHT GPT-trace eval wrapper for the mixed model and base
+3. Confirm [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh) is present in that checkout
+4. Launch the mixed LR sweep detached on the stronger machine
+5. After training, run the reusable full BRIGHT GPT-trace eval wrapper for the sweep winner, the mixed baseline, and base
 
 ## Better Than This Note?
 

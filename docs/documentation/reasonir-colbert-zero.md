@@ -139,7 +139,9 @@ uv run python examples/train/ColBERT-zero/reasonir.py \
 
 Operational notes for the mixed path:
 
-- the first planned full mixed-data run uses `bs=2048`, `lr=8e-5`, `epochs=3`, `validation_size=0.01`
+- the completed mixed baseline `reasonir-mixed-bs2048-lr8e5` reached `27.12` on full BRIGHT with GPT-4 reasoning traces vs base `26.51`
+- the current next step is the lower-LR mixed sweep at `bs=2048`: `5e-6`, `1e-5`, `3e-5`, `5e-5`
+- the launcher for that next step is [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh)
 - run that job on the stronger machine, not the local exploratory box
 - launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
 - the reusable full-BRIGHT GPT-trace wrapper is [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
@@ -265,8 +267,8 @@ Reviews:
 
 So:
 
-- if your target regime is raw queries, continue with the Stage 2 sweep below
-- if your target regime is GPT-4 reasoning traces, continue with Stage 2 using `bs2048` as the default anchor and keep base `ColBERT-Zero` as the control model
+- if your target regime is raw queries, continue with the HQ Stage 2 sweep below
+- if your target regime is GPT-4 reasoning traces, the mixed baseline is now the best result and the next step is the mixed `bs2048` lower-LR sweep
 
 ### Stage 2
 

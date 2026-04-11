@@ -77,9 +77,15 @@ On the new machine, pass explicit overrides:
     - StrategyQA: `1603`
   - current mixed-dataset training command:
     - `uv run python examples/train/ColBERT-zero/reasonir.py --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data --datasets mixed --prompt-id hq_gen --generator balanced-v1 --max-negatives 1`
-  - first planned full mixed-data training config:
+  - completed mixed baseline:
+    - run: `reasonir-mixed-bs2048-lr8e5`
+    - full BRIGHT GPT-4: `27.12`
+    - base `ColBERT-Zero`: `26.51`
+    - delta: `+0.61`
+  - next mixed training step:
+    - launcher: `./scripts/reasonir_mixed_lr_sweep.sh`
     - `bs=2048`
-    - `lr=8e-5`
+    - LR grid: `5e-6`, `1e-5`, `3e-5`, `5e-5`
     - `epochs=3`
     - `validation_size=0.01`
     - `save_steps=5`
@@ -103,6 +109,8 @@ On the new machine, pass explicit overrides:
     - `--wandb-entity rbw`
   - inspect recent W&B runs from the terminal with:
     - `uv run python scripts/wandb_project_runs.py --entity rbw --project ColBERT-Zero --limit 10`
+  - reusable full mixed GPT-4 BRIGHT wrapper:
+    - `bash scripts/run_full_bright_gpt4_eval.sh`
   - current HQ tuning workflow still uses the shell scripts:
     - Stage 1: `./scripts/reasonir_hq_batch_sweep.sh`
     - Stage 2: `BEST_BATCH_SIZE=... ./scripts/reasonir_hq_lr_sweep.sh`
