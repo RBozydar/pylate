@@ -142,6 +142,7 @@ Operational notes for the mixed path:
 - the first planned full mixed-data run uses `bs=2048`, `lr=8e-5`, `epochs=3`, `validation_size=0.01`
 - run that job on the stronger machine, not the local exploratory box
 - launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
+- the reusable full-BRIGHT GPT-trace wrapper is [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
 - the step-by-step launch and eval flow lives in [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
 ## Training Script

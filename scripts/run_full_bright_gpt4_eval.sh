@@ -7,50 +7,69 @@ cd /home/rbw/repo/pylate
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export HF_DATASETS_OFFLINE="${HF_DATASETS_OFFLINE:-1}"
 
+MODEL_PATH="${MODEL_PATH:-}"
+OUTPUT_JSON="${OUTPUT_JSON:-}"
+RUN_NAME="${RUN_NAME:-}"
+REPORT_TO="${REPORT_TO:-wandb}"
+
 CACHE_DIR="${CACHE_DIR:-/mnt/ml_models/cache/pylate-bright-cache}"
 QUERY_BATCH_SIZE="${QUERY_BATCH_SIZE:-32}"
 QUERY_ENCODE_BATCH_SIZE="${QUERY_ENCODE_BATCH_SIZE:-32}"
 DOCUMENT_BATCH_SIZE="${DOCUMENT_BATCH_SIZE:-256}"
 CORPUS_CHUNK_SIZE="${CORPUS_CHUNK_SIZE:-256}"
 TOP_K="${TOP_K:-1000}"
-WANDB_GROUP="${WANDB_GROUP:-reasonir-hq-gpt4-gate-full}"
+WANDB_PROJECT="${WANDB_PROJECT:-ColBERT-Zero}"
+WANDB_ENTITY="${WANDB_ENTITY:-rbw}"
+WANDB_GROUP="${WANDB_GROUP:-reasonir-mixed-gpt4-full}"
+WANDB_JOB_TYPE="${WANDB_JOB_TYPE:-bright-eval}"
+TASKS="${TASKS:-}"
 
-run_eval() {
-  local model_path="$1"
-  local output_json="$2"
-  local run_name="$3"
+if [[ -z "${MODEL_PATH}" ]]; then
+  echo "MODEL_PATH is required." >&2
+  echo "Example:" >&2
+  echo "  MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \\" >&2
+  echo "  OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \\" >&2
+  echo "  RUN_NAME=eval-reasonir-mixed-bs2048-lr8e5-gpt4-full \\" >&2
+  echo "  ./scripts/run_full_bright_gpt4_eval.sh" >&2
+  exit 1
+fi
 
-  uv run python examples/evaluation/bright_reasonir.py \
-    --model_name_or_path "${model_path}" \
-    --reasoning gpt4 \
-    --use_reason_moderncolbert_gpt4_lengths \
-    --query_batch_size "${QUERY_BATCH_SIZE}" \
-    --query_encode_batch_size "${QUERY_ENCODE_BATCH_SIZE}" \
-    --document_batch_size "${DOCUMENT_BATCH_SIZE}" \
-    --corpus_chunk_size "${CORPUS_CHUNK_SIZE}" \
-    --top_k "${TOP_K}" \
-    --cache_dir "${CACHE_DIR}" \
-    --output_json "${output_json}" \
-    --cleanup-document-cache \
-    --report-to wandb \
-    --wandb-project ColBERT-Zero \
-    --wandb-entity rbw \
-    --wandb-run-name "${run_name}" \
-    --wandb-group "${WANDB_GROUP}" \
-    --wandb-job-type bright-eval
-}
+if [[ -z "${RUN_NAME}" ]]; then
+  RUN_NAME="eval-$(basename "${MODEL_PATH}")-gpt4-full"
+fi
 
-run_eval \
-  /mnt/ml_models/lightonai/ColBERT-Zero \
-  /home/rbw/repo/pylate/output/bright-base-colbert-zero-gpt4-full.json \
-  eval-colbert-zero-gpt4-full-r4
+if [[ -z "${OUTPUT_JSON}" ]]; then
+  OUTPUT_JSON="/home/rbw/repo/pylate/output/${RUN_NAME}.json"
+fi
 
-run_eval \
-  /home/rbw/repo/pylate/output/hq-batch-bs2048-lr8e5-temp1/checkpoint-50 \
-  /home/rbw/repo/pylate/output/hq-batch-bs2048-lr8e5-temp1-checkpoint-50-gpt4-full.json \
-  eval-hq-batch-bs2048-lr8e5-temp1-checkpoint-50-gpt4-full
+ARGS=(
+  uv run python examples/evaluation/bright_reasonir.py
+  --model_name_or_path "${MODEL_PATH}"
+  --reasoning gpt4
+  --use_reason_moderncolbert_gpt4_lengths
+  --query_batch_size "${QUERY_BATCH_SIZE}"
+  --query_encode_batch_size "${QUERY_ENCODE_BATCH_SIZE}"
+  --document_batch_size "${DOCUMENT_BATCH_SIZE}"
+  --corpus_chunk_size "${CORPUS_CHUNK_SIZE}"
+  --top_k "${TOP_K}"
+  --cache_dir "${CACHE_DIR}"
+  --output_json "${OUTPUT_JSON}"
+  --cleanup-document-cache
+  --report-to "${REPORT_TO}"
+)
 
-run_eval \
-  /mnt/ml_models/lightonai/ColBERT-Zero-reason-training/hq-batch-bs4096-lr1e4-temp1/checkpoint-5 \
-  /home/rbw/repo/pylate/output/hq-batch-bs4096-lr1e4-temp1-checkpoint-5-gpt4-full.json \
-  eval-hq-batch-bs4096-lr1e4-temp1-checkpoint-5-gpt4-full
+if [[ -n "${TASKS}" ]]; then
+  ARGS+=(--tasks "${TASKS}")
+fi
+
+if [[ "${REPORT_TO}" != "none" ]]; then
+  ARGS+=(
+    --wandb-project "${WANDB_PROJECT}"
+    --wandb-entity "${WANDB_ENTITY}"
+    --wandb-run-name "${RUN_NAME}"
+    --wandb-group "${WANDB_GROUP}"
+    --wandb-job-type "${WANDB_JOB_TYPE}"
+  )
+fi
+
+"${ARGS[@]}"

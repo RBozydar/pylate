@@ -22,6 +22,8 @@ This covers:
   - [`examples/train/ColBERT-zero/reasonir.py`](/home/rbw/repo/pylate/examples/train/ColBERT-zero/reasonir.py)
 - BRIGHT evaluator:
   - [`examples/evaluation/bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py)
+- reusable full GPT-trace BRIGHT wrapper:
+  - [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
 - W&B inspection helper:
   - [`scripts/wandb_project_runs.py`](/home/rbw/repo/pylate/scripts/wandb_project_runs.py)
 - detailed mixed-data notes:
@@ -170,27 +172,14 @@ Expected W&B project:
 
 ## Step 4: Run Full BRIGHT GPT-Trace Eval
 
-After training finishes, evaluate the final checkpoint with the same stable full-BRIGHT GPT-trace settings used earlier:
+After training finishes, evaluate the final checkpoint with the reusable wrapper:
 
 ```bash
-uv run python examples/evaluation/bright_reasonir.py \
-  --model_name_or_path /home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \
-  --reasoning gpt4 \
-  --use_reason_moderncolbert_gpt4_lengths \
-  --query_batch_size 32 \
-  --query_encode_batch_size 32 \
-  --document_batch_size 256 \
-  --corpus_chunk_size 256 \
-  --top_k 1000 \
-  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
-  --output_json /home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \
-  --cleanup-document-cache \
-  --report-to wandb \
-  --wandb-project ColBERT-Zero \
-  --wandb-entity rbw \
-  --wandb-run-name eval-reasonir-mixed-bs2048-lr8e5-gpt4-full \
-  --wandb-group reasonir-mixed-gpt4-full \
-  --wandb-job-type bright-eval
+MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \
+OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \
+RUN_NAME=eval-reasonir-mixed-bs2048-lr8e5-gpt4-full \
+WANDB_GROUP=reasonir-mixed-gpt4-full \
+bash scripts/run_full_bright_gpt4_eval.sh
 ```
 
 ## Step 5: Compare Against Base
@@ -198,24 +187,11 @@ uv run python examples/evaluation/bright_reasonir.py \
 Run the same full BRIGHT GPT-trace eval on base `ColBERT-Zero` if you need a fresh control on the stronger machine:
 
 ```bash
-uv run python examples/evaluation/bright_reasonir.py \
-  --model_name_or_path /mnt/ml_models/lightonai/ColBERT-Zero \
-  --reasoning gpt4 \
-  --use_reason_moderncolbert_gpt4_lengths \
-  --query_batch_size 32 \
-  --query_encode_batch_size 32 \
-  --document_batch_size 256 \
-  --corpus_chunk_size 256 \
-  --top_k 1000 \
-  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
-  --output_json /home/rbw/repo/pylate/output/bright-base-colbert-zero-gpt4-full.json \
-  --cleanup-document-cache \
-  --report-to wandb \
-  --wandb-project ColBERT-Zero \
-  --wandb-entity rbw \
-  --wandb-run-name eval-colbert-zero-gpt4-full \
-  --wandb-group reasonir-mixed-gpt4-full \
-  --wandb-job-type bright-eval
+MODEL_PATH=/mnt/ml_models/lightonai/ColBERT-Zero \
+OUTPUT_JSON=/home/rbw/repo/pylate/output/bright-base-colbert-zero-gpt4-full.json \
+RUN_NAME=eval-colbert-zero-gpt4-full \
+WANDB_GROUP=reasonir-mixed-gpt4-full \
+bash scripts/run_full_bright_gpt4_eval.sh
 ```
 
 ## Notes
