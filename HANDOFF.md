@@ -20,6 +20,7 @@ The relevant work in this branch is:
   - [`examples/evaluation/bright_reasonir.py`](/home/rbw/repo/pylate/examples/evaluation/bright_reasonir.py)
   - reusable full GPT-trace wrapper:
     - [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
+    - now supports `TASK_CONFIGS` for task-specific BRIGHT eval batch/chunk settings
 - current shell-script HQ tuning workflow:
   - [`scripts/reasonir_hq_batch_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_batch_sweep.sh)
   - [`scripts/reasonir_hq_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_hq_lr_sweep.sh)

@@ -143,6 +143,7 @@ Operational notes for the mixed path:
 - run that job on the stronger machine, not the local exploratory box
 - launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
 - the reusable full-BRIGHT GPT-trace wrapper is [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
+- that wrapper now supports `TASK_CONFIGS` for per-task batch/chunk settings on stronger GPUs
 - the step-by-step launch and eval flow lives in [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
 ## Training Script

@@ -216,6 +216,25 @@ WANDB_GROUP=reasonir-mixed-gpt4-full \
 bash scripts/run_full_bright_gpt4_eval.sh
 ```
 
+It also supports task-specific configs via `TASK_CONFIGS`, so the stronger machine does not have to use one global batch/chunk setting for every BRIGHT task.
+
+Format:
+
+```text
+tasks|query_batch|query_encode_batch|document_batch|corpus_chunk|document_cache_chunk
+```
+
+Example multi-config run:
+
+```bash
+MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \
+OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \
+RUN_NAME=eval-reasonir-mixed-bs2048-lr8e5-gpt4-full \
+WANDB_GROUP=reasonir-mixed-gpt4-full \
+TASK_CONFIGS='earth_science|32|128|256|256|256;biology,robotics,stackoverflow,aops,theoremqa_questions|64|128|256|512|512;economics,psychology,sustainable_living,leetcode,pony,theoremqa_theorems|64|128|256|1024|1024' \
+bash scripts/run_full_bright_gpt4_eval.sh
+```
+
 Use it for a fresh base control:
 
 ```bash
