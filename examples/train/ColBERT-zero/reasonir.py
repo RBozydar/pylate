@@ -19,8 +19,10 @@ from pylate.scores import colbert_scores_pairwise
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MODEL_PATH = Path("/mnt/ml_models/lightonai/ColBERT-Zero")
-DEFAULT_DATA_ROOT = Path(
-    "/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data"
+DEFAULT_DATA_ROOT = (
+    Path("/mnt/ml_models/datasets/ReasonIR/synthetic_data")
+    if Path("/mnt/ml_models/datasets/ReasonIR/synthetic_data").exists()
+    else Path("/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data")
 )
 DEFAULT_GENERATOR = "gemini-3-flash-preview"
 DEFAULT_PROMPT_ID = "hq_gen"
@@ -121,13 +123,20 @@ def parse_args() -> argparse.Namespace:
         "--data-root",
         type=Path,
         default=DEFAULT_DATA_ROOT,
-        help="Root directory containing synthetic_data/{hq,vl}/<prompt-id>/<generator>/final_train_data.jsonl.",
+        help=(
+            "Root directory containing synthetic_data/<dataset>/<prompt-id>/<generator>/"
+            "final_train_data.jsonl. Defaults to /mnt/ml_models/datasets/ReasonIR/"
+            "synthetic_data when present."
+        ),
     )
     parser.add_argument(
         "--datasets",
         type=str,
         default="hq,vl",
-        help="Comma-separated dataset groups to use. Default: hq,vl",
+        help=(
+            "Comma-separated dataset groups to use, for example hq,vl or mixed. "
+            "Default: hq,vl."
+        ),
     )
     parser.add_argument(
         "--prompt-id",
@@ -139,7 +148,10 @@ def parse_args() -> argparse.Namespace:
         "--generator",
         type=str,
         default=DEFAULT_GENERATOR,
-        help="Synthetic data generator subdirectory name.",
+        help=(
+            "Synthetic data generator or mix subdirectory name, for example "
+            "gemini-3-flash-preview or balanced-v1."
+        ),
     )
     parser.add_argument(
         "--dataset-cache-dir",

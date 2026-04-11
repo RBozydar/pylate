@@ -84,6 +84,39 @@ dataset = load_dataset(
 train_dataset, test_dataset = dataset.train_test_split(test_size=0.001)
 ```
 
+### Preparing a local mixed ReasonIR triplet dataset
+
+For the local `ColBERT-Zero` ReasonIR workflow in this repo, a balanced mixed triplet dataset can be staged under `/mnt/ml_models/datasets/ReasonIR/synthetic_data` with:
+
+- [`scripts/prepare_reasonir_mixed_dataset.py`](/home/rbw/repo/pylate/scripts/prepare_reasonir_mixed_dataset.py)
+
+It combines regenerated local ReasonIR triplets with selected Hugging Face datasets and writes a single `final_train_data.jsonl` in the same directory layout expected by the local training script:
+
+```bash
+uv run python scripts/prepare_reasonir_mixed_dataset.py --force
+```
+
+That produces:
+
+```text
+/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/final_train_data.jsonl
+```
+
+The staged dataset can then be consumed directly by:
+
+```bash
+uv run python examples/train/ColBERT-zero/reasonir.py \
+  --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data \
+  --datasets mixed \
+  --prompt-id hq_gen \
+  --generator balanced-v1 \
+  --max-negatives 1
+```
+
+For the full operational workflow, including the detached training launch and the full BRIGHT GPT-trace eval after training, see:
+
+- [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
+
 
 
 ## Knowledge distillation dataset

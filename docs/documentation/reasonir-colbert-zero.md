@@ -1,10 +1,14 @@
 # ReasonIR ColBERT-Zero Fine-Tuning
 
-This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including both the local synthetic triplets path and the official HQ dataset path.
+This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including the local synthetic triplets path, the new balanced mixed-dataset path, and the official HQ dataset path.
 
 For the future structured W&B sweep workflow for the official HQ path, see:
 
 - [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
+
+For the staged balanced mixed-dataset workflow, see:
+
+- [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
 ## Goal
 
@@ -53,8 +57,10 @@ uv run python scripts/wandb_project_runs.py \
 ## Local Inputs
 
 - Base model used in this run: `/mnt/ml_models/lightonai/ColBERT-Zero`
-- ReasonIR HQ data used in this run: `/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data/hq/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
-- ReasonIR VL data used in this run: `/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data/vl/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- preferred synthetic root on this machine: `/mnt/ml_models/datasets/ReasonIR/synthetic_data`
+- regenerated HQ source: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/hq/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- regenerated VL source: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/vl/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- balanced mixed dataset root: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1`
 
 Those are local machine paths, not hard requirements. On another machine, override them with:
 
@@ -63,11 +69,80 @@ Those are local machine paths, not hard requirements. On another machine, overri
 - `--output-dir /path/to/output`
 - `--dataset-cache-dir /path/to/writable/hf-cache`
 
-Current dataset sizes:
+Current regenerated HQ/VL sizes:
 
 - HQ: `14979` triplets
 - VL: `12174` triplets
 - Total: `27153` triplets
+
+## Balanced Mixed Dataset
+
+The mixed dataset builder is:
+
+- [`scripts/prepare_reasonir_mixed_dataset.py`](/home/rbw/repo/pylate/scripts/prepare_reasonir_mixed_dataset.py)
+
+It stages a balanced local training mix directly under `/mnt/ml_models/datasets/ReasonIR/synthetic_data` so the existing local training script can consume it without any special loader changes.
+
+Default output:
+
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/final_train_data.jsonl`
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/manifest.json`
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/sources/*.jsonl`
+
+Default composition in the current build:
+
+- regenerated HQ: `10000`
+- regenerated VL: `10000`
+- Nomic general pairs: `10000`
+- 2WikiMultiHopQA: `5000`
+- QASC: `5000`
+- HoVer: `4000`
+- StrategyQA: `1603` (all train rows)
+- total: `45603`
+
+Realized per-source shares:
+
+- `hq`: `21.93%`
+- `vl`: `21.93%`
+- `nomic_general`: `21.93%`
+- `2wiki`: `10.96%`
+- `qasc`: `10.96%`
+- `hover`: `8.77%`
+- `strategyqa`: `3.52%`
+
+That keeps HQ + VL as the largest block, preserves a Nomic general-retrieval anchor, and keeps every single dataset well below the `30%` dominance threshold.
+
+Important caveat:
+
+- the referenced `Dzeniks/hover` mirror does not expose hop count, so HoVer falls back to label-balanced sampling instead of explicit `2/3/4`-hop stratification
+
+The builder currently pulls and stores external dataset files under:
+
+- `/mnt/ml_models/datasets/_raw`
+
+Regenerate the staged mixed dataset with:
+
+```bash
+uv run python scripts/prepare_reasonir_mixed_dataset.py --force
+```
+
+Train on the mixed dataset with:
+
+```bash
+uv run python examples/train/ColBERT-zero/reasonir.py \
+  --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data \
+  --datasets mixed \
+  --prompt-id hq_gen \
+  --generator balanced-v1 \
+  --max-negatives 1
+```
+
+Operational notes for the mixed path:
+
+- the first planned full mixed-data run uses `bs=2048`, `lr=8e-5`, `epochs=3`, `validation_size=0.01`
+- run that job on the stronger machine, not the local exploratory box
+- launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
+- the step-by-step launch and eval flow lives in [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
 ## Training Script
 
@@ -78,11 +153,13 @@ The dedicated training entry point is:
 Key behavior:
 
 - loads local HQ/VL ReasonIR JSONL triplets
+- can also train from the staged `mixed` dataset group under `/mnt/ml_models/datasets/ReasonIR/synthetic_data`
 - filters to rows with at least one positive and the requested number of negatives
 - maps rows into `query`, `document`, `negative_0..negative_n`
 - preserves `search_query:` and `search_document:` during training
 - uses a prompt-aligned triplet evaluator when validation is enabled
 - supports a writable HF datasets cache via `--dataset-cache-dir`
+- now defaults `--data-root` to `/mnt/ml_models/datasets/ReasonIR/synthetic_data` when that path exists
 
 ## Official HQ Replication Path
 
