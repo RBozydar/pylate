@@ -1,6 +1,6 @@
 # ReasonIR Mixed Runbook
 
-This runbook is the recommended workflow for continuing the mixed `ReasonIR` + `ColBERT-Zero` path after the first balanced mixed baseline finished and beat base `ColBERT-Zero` on full BRIGHT with GPT-4 reasoning traces.
+This runbook is the recommended workflow for continuing the mixed `ReasonIR` + `ColBERT-Zero` path after the first balanced mixed baseline finished, the lower-LR sweep completed, and the temperature sweep produced a new best checkpoint on full BRIGHT with GPT-4 reasoning traces.
 
 Use this path for the mixed local dataset under `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1`, not for the official HQ sweep workflow.
 
@@ -10,10 +10,10 @@ This covers:
 
 - rebuilding the staged mixed dataset
 - the completed mixed-data baseline result
-- launching the mixed-data LR sweep
-- running the job durably on a stronger machine
-- monitoring the run in W&B
-- running full BRIGHT GPT-trace evals after training
+- the completed mixed-data LR sweep
+- the completed mixed-data temperature sweep
+- the current best checkpoint to use for future evals
+- the next tuning step if more search is justified
 
 ## Files
 
@@ -27,10 +27,18 @@ This covers:
   - [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
 - mixed LR sweep launcher:
   - [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh)
+- mixed temperature sweep launcher:
+  - [`scripts/reasonir_mixed_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_sweep.sh)
+- mixed temperature GPT-4 batch eval helper:
+  - [`scripts/reasonir_mixed_temp_gpt4_eval_batch.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_gpt4_eval_batch.sh)
 - W&B inspection helper:
   - [`scripts/wandb_project_runs.py`](/home/rbw/repo/pylate/scripts/wandb_project_runs.py)
 - detailed mixed-data notes:
   - [`docs/documentation/reasonir-colbert-zero.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-colbert-zero.md)
+- lower-LR sweep result comparison:
+  - [`docs/documentation/reasonir-mixed-lr-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-lr-sweep-results.md)
+- temperature sweep result comparison:
+  - [`docs/documentation/reasonir-mixed-temp-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-temp-sweep-results.md)
 
 ## Before You Start
 
@@ -95,120 +103,85 @@ Full BRIGHT with GPT-4 reasoning traces:
 - base `ColBERT-Zero`: `26.51`
 - delta: `+0.61`
 
-That makes the mixed baseline the current best result in this branch for the GPT-trace target regime.
+That baseline beat base `ColBERT-Zero`, but it is no longer the current best result after the completed temperature sweep.
 
-## Step 3: Launch The Mixed LR Sweep
+## Step 3: Completed Mixed LR Sweep
 
-The next planned step is a lower-LR sweep at the same `bs=2048`:
+The lower-LR sweep at the same `bs=2048` is complete:
 
 - `5e-6`
 - `1e-5`
 - `3e-5`
 - `5e-5`
 
-The launcher is:
+Launcher:
 
 - [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh)
 
-It defaults to:
+Full GPT-4 BRIGHT means:
 
-- dataset: `mixed/hq_gen/balanced-v1`
-- `validation_size=0.01`
-- `epochs=3`
-- `bs=2048`
-- `eval_bs=2048`
-- `mini_batch_size=32`
-- `save_steps=5`
-- `eval_steps=5`
-- `logging_steps=1`
-- `save_total_limit=20`
+- `lr=5e-6`: `26.60`
+- `lr=1e-5`: `26.26`
+- `lr=3e-5`: `26.81`
+- `lr=5e-5`: `26.89`
 
-### Recommended `tmux` Launch
+Result:
 
-Start a session:
+- no lower-LR run beat the original mixed baseline `27.12`
+- the best lower-LR run was `reasonir-mixed-lr-bs2048-lr5e-5` at `26.89`
+- details live in [`docs/documentation/reasonir-mixed-lr-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-lr-sweep-results.md)
 
-```bash
-tmux new -s reasonir-mixed-lr
-```
+## Step 4: Completed Mixed Temperature Sweep
 
-Then run:
+The next sweep was temperature at the original winning `bs=2048 lr=8e-5` setting.
 
-```bash
-./scripts/reasonir_mixed_lr_sweep.sh
-```
+Launcher:
 
-Detach with `Ctrl-b d`.
+- [`scripts/reasonir_mixed_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_sweep.sh)
 
-### Recommended `nohup` Launch
+Evaluated temperatures:
 
-If you prefer a detached shell job:
+- `0.05`
+- `0.1`
+- `0.25`
+- `0.5`
 
-```bash
-mkdir -p /home/rbw/repo/pylate/output/logs
-nohup ./scripts/reasonir_mixed_lr_sweep.sh \
-  > /home/rbw/repo/pylate/output/logs/reasonir-mixed-lr-bs2048.log 2>&1 &
-```
+Full GPT-4 BRIGHT means:
 
-If you need to override the default LR list without editing the file:
+- `temp=0.05`: `26.91`
+- `temp=0.1`: `27.56`
+- `temp=0.25`: `27.48`
+- `temp=0.5`: `27.72`
+- prior mixed baseline `temp=1.0`: `27.12`
 
-```bash
-LR_VALUES=5e-6,8e-6,1e-5,3e-5 ./scripts/reasonir_mixed_lr_sweep.sh
-```
+Result:
 
-## Step 4: Monitor Training
+- `temp=0.5` is the current best mixed-model checkpoint for the GPT-trace BRIGHT target regime
+- `temp=0.5` improved the prior mixed baseline by `+0.60`
+- `temp=0.1` and `temp=0.25` also beat the prior mixed baseline
+- details live in [`docs/documentation/reasonir-mixed-temp-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-temp-sweep-results.md)
 
-Check W&B:
+The reusable batch eval helper for the completed temperature sweep is:
 
-```bash
-uv run python scripts/wandb_project_runs.py \
-  --entity rbw \
-  --project ColBERT-Zero \
-  --name-contains reasonir-mixed-lr-bs2048 \
-  --limit 5 \
-  --history-tail 5
-```
+- [`scripts/reasonir_mixed_temp_gpt4_eval_batch.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_gpt4_eval_batch.sh)
 
-Expected W&B project:
+## Step 5: Current Recommended Checkpoint
 
-- `rbw/ColBERT-Zero`
+Use this checkpoint as the default mixed-model candidate for future BRIGHT evals:
 
-Expected output directories:
+- `/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp05/final`
 
-- `/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr5e-6`
-- `/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5`
-- `/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr3e-5`
-- `/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr5e-5`
+If you want the strongest current alternative that leans more toward coding and theorem-style tasks, keep this one nearby as well:
 
-## Step 5: Run Full BRIGHT GPT-Trace Eval
+- `/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp01/final`
 
-After the sweep finishes, evaluate the most promising run or checkpoint with the reusable wrapper:
+Evaluate the current winner with the reusable wrapper:
 
 ```bash
-MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5/final \
-OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full.json \
-RUN_NAME=eval-reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full \
+MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp05/final \
+OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp05-gpt4-full.json \
+RUN_NAME=eval-reasonir-mixed-temp-bs2048-lr8e-5-temp05-gpt4-full \
 WANDB_GROUP=reasonir-mixed-gpt4-full \
-bash scripts/run_full_bright_gpt4_eval.sh
-```
-
-If a single global config is leaving GPU throughput on the table, the wrapper also supports multiple task-specific configs through `TASK_CONFIGS`.
-
-Format:
-
-```text
-tasks|query_batch|query_encode_batch|document_batch|corpus_chunk|document_cache_chunk
-```
-
-Separate multiple entries with `;`.
-
-Example split tuned for a stronger GPU:
-
-```bash
-MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5/final \
-OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full.json \
-RUN_NAME=eval-reasonir-mixed-lr-bs2048-lr1e-5-gpt4-full \
-WANDB_GROUP=reasonir-mixed-gpt4-full \
-TASK_CONFIGS='earth_science|32|128|256|256|256;biology,robotics,stackoverflow,aops,theoremqa_questions|64|128|256|512|512;economics,psychology,sustainable_living,leetcode,pony,theoremqa_theorems|64|128|256|1024|1024' \
 bash scripts/run_full_bright_gpt4_eval.sh
 ```
 
@@ -224,10 +197,26 @@ WANDB_GROUP=reasonir-mixed-gpt4-full \
 bash scripts/run_full_bright_gpt4_eval.sh
 ```
 
-Also keep the completed mixed baseline `reasonir-mixed-bs2048-lr8e5` as a direct control for the new LR runs.
+Also keep these completed controls in view:
+
+- mixed baseline `reasonir-mixed-bs2048-lr8e5`: `27.12`
+- best lower-LR run `reasonir-mixed-lr-bs2048-lr5e-5`: `26.89`
+- current winner `reasonir-mixed-temp-bs2048-lr8e-5-temp05`: `27.72`
+
+## Step 7: Next Planned Work
+
+The next move should not be another broad LR sweep.
+
+Recommended order:
+
+- treat `temp=0.5` as the promoted default mixed checkpoint
+- if you want variance/stability signal, rerun `temp=0.5` once before opening another broad sweep
+- if more tuning is still justified, refine temperature around the winning region instead of reopening LR; the obvious follow-up window is roughly `temp=0.25` to `0.75`
+- if you need stricter artifact parity for reporting, produce a fresh local base-model full GPT-4 BRIGHT JSON on the same machine
 
 ## Notes
 
 - the mixed builder keeps every single source below `30%` share so no one dataset dominates the mix
 - HoVer is currently label-balanced, not hop-balanced, because the referenced HF mirror does not expose hop count
-- the current next step is the lower-LR mixed sweep, not another rerun of the `8e-5` baseline
+- the reusable GPT-trace eval wrapper supports task-specific configs through `TASK_CONFIGS`
+- on this machine, prefer disk-backed temp/cache roots such as `${HOME}/.temp` over `/tmp` to avoid `tmpfs` exhaustion during BRIGHT evals

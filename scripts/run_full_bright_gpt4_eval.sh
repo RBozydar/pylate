@@ -7,6 +7,13 @@ cd /home/rbw/repo/pylate
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export HF_DATASETS_OFFLINE="${HF_DATASETS_OFFLINE:-1}"
 
+WANDB_ROOT="${WANDB_ROOT:-/mnt/ml_models/wandb}"
+export WANDB_DIR="${WANDB_DIR:-${WANDB_ROOT}/runs}"
+export WANDB_DATA_DIR="${WANDB_DATA_DIR:-${WANDB_ROOT}/data}"
+export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${WANDB_ROOT}/cache}"
+export WANDB_ARTIFACT_DIR="${WANDB_ARTIFACT_DIR:-${WANDB_ROOT}/artifacts}"
+EVAL_OUTPUT_ROOT="${EVAL_OUTPUT_ROOT:-${WANDB_ROOT}/eval-json}"
+
 MODEL_PATH="${MODEL_PATH:-}"
 OUTPUT_JSON="${OUTPUT_JSON:-}"
 RUN_NAME="${RUN_NAME:-}"
@@ -27,11 +34,13 @@ WANDB_JOB_TYPE="${WANDB_JOB_TYPE:-bright-eval}"
 TASKS="${TASKS:-}"
 TASK_CONFIGS="${TASK_CONFIGS:-}"
 
+mkdir -p "${WANDB_DIR}" "${WANDB_DATA_DIR}" "${WANDB_CACHE_DIR}" "${WANDB_ARTIFACT_DIR}" "${EVAL_OUTPUT_ROOT}"
+
 if [[ -z "${MODEL_PATH}" ]]; then
   echo "MODEL_PATH is required." >&2
   echo "Example:" >&2
   echo "  MODEL_PATH=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5/final \\" >&2
-  echo "  OUTPUT_JSON=/home/rbw/repo/pylate/output/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \\" >&2
+  echo "  OUTPUT_JSON=/mnt/ml_models/wandb/eval-json/reasonir-mixed-bs2048-lr8e5-gpt4-full.json \\" >&2
   echo "  RUN_NAME=eval-reasonir-mixed-bs2048-lr8e5-gpt4-full \\" >&2
   echo "  ./scripts/run_full_bright_gpt4_eval.sh" >&2
   exit 1
@@ -42,7 +51,7 @@ if [[ -z "${RUN_NAME}" ]]; then
 fi
 
 if [[ -z "${OUTPUT_JSON}" ]]; then
-  OUTPUT_JSON="/home/rbw/repo/pylate/output/${RUN_NAME}.json"
+  OUTPUT_JSON="${EVAL_OUTPUT_ROOT}/${RUN_NAME}.json"
 fi
 
 slugify() {

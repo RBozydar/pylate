@@ -10,6 +10,11 @@ For the staged balanced mixed-dataset workflow, see:
 
 - [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
+For completed mixed-sweep comparisons, see:
+
+- [`reasonir-mixed-lr-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-lr-sweep-results.md)
+- [`reasonir-mixed-temp-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-temp-sweep-results.md)
+
 ## Goal
 
 Replicate the general structure of [`examples/train/reason_moderncolbert.py`](/home/rbw/repo/pylate/examples/train/reason_moderncolbert.py) for `ColBERT-Zero`, while preserving the prompt behavior required by the base checkpoint. The original local workflow here uses synthetic data generated in the ReasonIR repository, and the official HQ replication path is documented separately below.
@@ -140,8 +145,12 @@ uv run python examples/train/ColBERT-zero/reasonir.py \
 Operational notes for the mixed path:
 
 - the completed mixed baseline `reasonir-mixed-bs2048-lr8e5` reached `27.12` on full BRIGHT with GPT-4 reasoning traces vs base `26.51`
-- the current next step is the lower-LR mixed sweep at `bs=2048`: `5e-6`, `1e-5`, `3e-5`, `5e-5`
-- the launcher for that next step is [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh)
+- the lower-LR mixed sweep at `bs=2048` is complete; its best run was `reasonir-mixed-lr-bs2048-lr5e-5` at `26.89`, which did not beat the `lr=8e-5` baseline
+- the temperature sweep at `bs=2048 lr=8e-5` is also complete; its winner was `reasonir-mixed-temp-bs2048-lr8e-5-temp05` at `27.72`
+- the current recommended checkpoint for GPT-trace BRIGHT is `/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp05/final`
+- the mixed path has dedicated launchers for both sweeps:
+  [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh) and
+  [`scripts/reasonir_mixed_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_sweep.sh)
 - run that job on the stronger machine, not the local exploratory box
 - launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
 - the reusable full-BRIGHT GPT-trace wrapper is [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
@@ -164,6 +173,14 @@ Key behavior:
 - uses a prompt-aligned triplet evaluator when validation is enabled
 - supports a writable HF datasets cache via `--dataset-cache-dir`
 - now defaults `--data-root` to `/mnt/ml_models/datasets/ReasonIR/synthetic_data` when that path exists
+
+Mixed-sweep runtime note:
+
+- the mixed training entrypoint is epoch-based, not `max_steps`-based
+- with the staged mixed dataset, train rows are currently `45146`
+- at `bs=2048` with `dataloader_drop_last=True`, one epoch is `floor(45146 / 2048) = 22` steps
+- so `epochs=3` produces `66` optimizer steps
+- this differs from the HQ sweep wrappers, which use explicit `max_steps=100` for tighter hyperparameter comparisons
 
 ## Official HQ Replication Path
 
