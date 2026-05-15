@@ -5,12 +5,24 @@ metric:
   goal: maximize
   name: bright/summary/full_mean
 parameters:
+  model:
+    value: /home/rbw/repo/models/lightonai/ColBERT-Zero/ColBERT-Zero
+  dataset_cache_dir:
+    value: /tmp/pylate-hf-cache
+  bright_cache_dir:
+    value: /tmp/pylate-bright-cache
+  output_root:
+    value: /home/rbw/repo/pylate/output
   stage:
     value: lr
   batch_size:
     value: 2048
   max_steps:
     value: 100
+  fp16:
+    value: true
+  no_bf16:
+    value: true
   learning_rate:
     values:
       - !!float 2e-5

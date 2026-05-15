@@ -18,7 +18,7 @@ It assumes the repo-local defaults already in use on this machine:
 
 - model: `/mnt/ml_models/lightonai/ColBERT-Zero`
 - dataset cache: `/tmp/pylate-hf-cache`
-- BRIGHT cache: `/tmp/pylate-bright-cache`
+- BRIGHT cache: `/mnt/ml_models/cache/pylate-bright-cache` when available, otherwise `/tmp/pylate-bright-cache`
 - W&B project: `ColBERT-Zero`
 - W&B entity: `rbw`
 
@@ -47,6 +47,7 @@ Make sure:
 - `uv run wandb login --verify` succeeds
 - the BRIGHT cache location has enough free disk
 - the Hugging Face cache location is writable
+- `--cleanup-document-cache` stays enabled unless you intentionally want to retain model-specific BRIGHT doc shards
 
 Useful inspection command:
 
@@ -88,6 +89,24 @@ Current Stage 1 status in this repo:
 - exploratory `bs4096` final: `8.95`
 
 That makes `bs2048` the safer default for the scripted LR sweep, unless you intentionally redesign the later stages for `bs4096` with shorter runs and denser checkpointing.
+
+If the target query regime is GPT-4 reasoning traces instead of raw queries, add one more gate before Stage 2:
+
+- compare base `ColBERT-Zero`
+- compare `bs2048 checkpoint-50`
+- compare `bs4096 checkpoint-5`
+- use `--reasoning gpt4 --use_reason_moderncolbert_gpt4_lengths`
+
+Current GPT-4 reasoning status:
+
+- the preliminary 4-task gate showed `base > bs2048 > bs4096`
+- the full 12-task BRIGHT comparison kept the same ordering but narrowed the gap materially
+- full-BRIGHT GPT-4 ranking:
+  - base `ColBERT-Zero`: `26.51`
+  - `bs2048 checkpoint-50`: `26.01`
+  - `bs4096 checkpoint-5`: `25.96`
+
+That means raw-query Stage 1 still does not transfer cleanly to GPT-4 reasoning, but the full-result gap is now small enough that a Stage 2 LR sweep is reasonable. Use `bs2048` as the default reasoning-trace anchor unless you have a task-specific reason to prefer the more unstable `bs4096` path.
 
 The numbered steps below are only for the future W&B Sweeps workflow.
 

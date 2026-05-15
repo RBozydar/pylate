@@ -4,8 +4,15 @@ set -euo pipefail
 
 MODEL_ROOT="${MODEL_ROOT:-/home/rbw/repo/pylate/output}"
 EVAL_SCRIPT="${EVAL_SCRIPT:-examples/evaluation/bright_reasonir.py}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-/home/rbw/repo/pylate/output}"
-BRIGHT_CACHE_DIR="${BRIGHT_CACHE_DIR:-/tmp/pylate-bright-cache}"
+WANDB_ROOT="${WANDB_ROOT:-/mnt/ml_models/wandb}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-${WANDB_ROOT}/eval-json}"
+if [[ -z "${BRIGHT_CACHE_DIR:-}" ]]; then
+  if [[ -d /mnt/ml_models/cache ]]; then
+    BRIGHT_CACHE_DIR="/mnt/ml_models/cache/pylate-bright-cache"
+  else
+    BRIGHT_CACHE_DIR="/tmp/pylate-bright-cache"
+  fi
+fi
 TASKS="${TASKS:-biology,economics,robotics,pony}"
 REASONING="${REASONING:-none}"
 QUERY_BATCH_SIZE="${QUERY_BATCH_SIZE:-16}"
@@ -34,6 +41,7 @@ WANDB_GROUP="${WANDB_GROUP:-$default_wandb_group}"
 WANDB_TAGS="${WANDB_TAGS:-$default_wandb_tags}"
 
 cd /home/rbw/repo/pylate
+mkdir -p "${BRIGHT_CACHE_DIR}" "${OUTPUT_ROOT}"
 
 batch_runs=(
   "hq-batch-bs256-lr1e5-temp1"

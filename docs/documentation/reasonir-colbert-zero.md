@@ -1,10 +1,19 @@
 # ReasonIR ColBERT-Zero Fine-Tuning
 
-This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including both the local synthetic triplets path and the official HQ dataset path.
+This note captures the available workflows for fine-tuning `lightonai/ColBERT-Zero` on ReasonIR data, including the local synthetic triplets path, the new balanced mixed-dataset path, and the official HQ dataset path.
 
 For the future structured W&B sweep workflow for the official HQ path, see:
 
 - [`REASONIR_HQ_SWEEP_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_HQ_SWEEP_RUNBOOK.md)
+
+For the staged balanced mixed-dataset workflow, see:
+
+- [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
+
+For completed mixed-sweep comparisons, see:
+
+- [`reasonir-mixed-lr-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-lr-sweep-results.md)
+- [`reasonir-mixed-temp-sweep-results.md`](/home/rbw/repo/pylate/docs/documentation/reasonir-mixed-temp-sweep-results.md)
 
 ## Goal
 
@@ -53,8 +62,10 @@ uv run python scripts/wandb_project_runs.py \
 ## Local Inputs
 
 - Base model used in this run: `/mnt/ml_models/lightonai/ColBERT-Zero`
-- ReasonIR HQ data used in this run: `/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data/hq/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
-- ReasonIR VL data used in this run: `/home/rbw/repo/ReasonIR/synthetic_data_generation/synthetic_data/vl/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- preferred synthetic root on this machine: `/mnt/ml_models/datasets/ReasonIR/synthetic_data`
+- regenerated HQ source: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/hq/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- regenerated VL source: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/vl/hq_gen/gemini-3-flash-preview/final_train_data.jsonl`
+- balanced mixed dataset root: `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1`
 
 Those are local machine paths, not hard requirements. On another machine, override them with:
 
@@ -63,11 +74,88 @@ Those are local machine paths, not hard requirements. On another machine, overri
 - `--output-dir /path/to/output`
 - `--dataset-cache-dir /path/to/writable/hf-cache`
 
-Current dataset sizes:
+Current regenerated HQ/VL sizes:
 
 - HQ: `14979` triplets
 - VL: `12174` triplets
 - Total: `27153` triplets
+
+## Balanced Mixed Dataset
+
+The mixed dataset builder is:
+
+- [`scripts/prepare_reasonir_mixed_dataset.py`](/home/rbw/repo/pylate/scripts/prepare_reasonir_mixed_dataset.py)
+
+It stages a balanced local training mix directly under `/mnt/ml_models/datasets/ReasonIR/synthetic_data` so the existing local training script can consume it without any special loader changes.
+
+Default output:
+
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/final_train_data.jsonl`
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/manifest.json`
+- `/mnt/ml_models/datasets/ReasonIR/synthetic_data/mixed/hq_gen/balanced-v1/sources/*.jsonl`
+
+Default composition in the current build:
+
+- regenerated HQ: `10000`
+- regenerated VL: `10000`
+- Nomic general pairs: `10000`
+- 2WikiMultiHopQA: `5000`
+- QASC: `5000`
+- HoVer: `4000`
+- StrategyQA: `1603` (all train rows)
+- total: `45603`
+
+Realized per-source shares:
+
+- `hq`: `21.93%`
+- `vl`: `21.93%`
+- `nomic_general`: `21.93%`
+- `2wiki`: `10.96%`
+- `qasc`: `10.96%`
+- `hover`: `8.77%`
+- `strategyqa`: `3.52%`
+
+That keeps HQ + VL as the largest block, preserves a Nomic general-retrieval anchor, and keeps every single dataset well below the `30%` dominance threshold.
+
+Important caveat:
+
+- the referenced `Dzeniks/hover` mirror does not expose hop count, so HoVer falls back to label-balanced sampling instead of explicit `2/3/4`-hop stratification
+
+The builder currently pulls and stores external dataset files under:
+
+- `/mnt/ml_models/datasets/_raw`
+
+Regenerate the staged mixed dataset with:
+
+```bash
+uv run python scripts/prepare_reasonir_mixed_dataset.py --force
+```
+
+Train on the mixed dataset with:
+
+```bash
+uv run python examples/train/ColBERT-zero/reasonir.py \
+  --data-root /mnt/ml_models/datasets/ReasonIR/synthetic_data \
+  --datasets mixed \
+  --prompt-id hq_gen \
+  --generator balanced-v1 \
+  --max-negatives 1
+```
+
+Operational notes for the mixed path:
+
+- the completed mixed baseline `reasonir-mixed-bs2048-lr8e5` reached `27.12` on full BRIGHT with GPT-4 reasoning traces vs base `26.51`
+- the lower-LR mixed sweep at `bs=2048` is complete; its best run was `reasonir-mixed-lr-bs2048-lr5e-5` at `26.89`, which did not beat the `lr=8e-5` baseline
+- the temperature sweep at `bs=2048 lr=8e-5` is also complete; its winner was `reasonir-mixed-temp-bs2048-lr8e-5-temp05` at `27.72`
+- the current recommended checkpoint for GPT-trace BRIGHT is `/home/rbw/repo/pylate/output/reasonir-mixed-temp-bs2048-lr8e-5-temp05/final`
+- the mixed path has dedicated launchers for both sweeps:
+  [`scripts/reasonir_mixed_lr_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_lr_sweep.sh) and
+  [`scripts/reasonir_mixed_temp_sweep.sh`](/home/rbw/repo/pylate/scripts/reasonir_mixed_temp_sweep.sh)
+- run that job on the stronger machine, not the local exploratory box
+- launch it in `tmux`, `screen`, `nohup`, or equivalent; do not rely on an attached terminal for a long run
+- the reusable full-BRIGHT GPT-trace wrapper is [`scripts/run_full_bright_gpt4_eval.sh`](/home/rbw/repo/pylate/scripts/run_full_bright_gpt4_eval.sh)
+- that wrapper now supports `TASK_CONFIGS` for per-task batch/chunk settings on stronger GPUs
+- the step-by-step launch and eval flow lives in [`REASONIR_MIXED_RUNBOOK.md`](/home/rbw/repo/pylate/REASONIR_MIXED_RUNBOOK.md)
 
 ## Training Script
 
@@ -78,11 +166,21 @@ The dedicated training entry point is:
 Key behavior:
 
 - loads local HQ/VL ReasonIR JSONL triplets
+- can also train from the staged `mixed` dataset group under `/mnt/ml_models/datasets/ReasonIR/synthetic_data`
 - filters to rows with at least one positive and the requested number of negatives
 - maps rows into `query`, `document`, `negative_0..negative_n`
 - preserves `search_query:` and `search_document:` during training
 - uses a prompt-aligned triplet evaluator when validation is enabled
 - supports a writable HF datasets cache via `--dataset-cache-dir`
+- now defaults `--data-root` to `/mnt/ml_models/datasets/ReasonIR/synthetic_data` when that path exists
+
+Mixed-sweep runtime note:
+
+- the mixed training entrypoint is epoch-based, not `max_steps`-based
+- with the staged mixed dataset, train rows are currently `45146`
+- at `bs=2048` with `dataloader_drop_last=True`, one epoch is `floor(45146 / 2048) = 22` steps
+- so `epochs=3` produces `66` optimizer steps
+- this differs from the HQ sweep wrappers, which use explicit `max_steps=100` for tighter hyperparameter comparisons
 
 ## Official HQ Replication Path
 
@@ -169,6 +267,25 @@ Current status from the first pass:
 That means the default next step is still the `bs2048` LR sweep. Treat `bs4096` as a special short-schedule experiment unless you also tighten checkpoint cadence for later stages.
 
 The current Stage 2 sweep is intentionally centered higher than before so it covers the LR region that actually worked in Stage 1 at large batch sizes.
+
+Updated reasoning-trace takeaway:
+
+- the earlier 4-task GPT-4 gate correctly showed that raw-query Stage 1 ranking does not transfer cleanly
+- the full 12-task GPT-4 BRIGHT comparison still ranks base first, but the gap is now small enough to justify continuing tuning
+- full-BRIGHT GPT-4 ranking:
+  - base `ColBERT-Zero`: `26.51`
+  - `bs2048 checkpoint-50`: `26.01`
+  - `bs4096 checkpoint-5`: `25.96`
+
+Reviews:
+
+- preliminary 4-task gate: [`reasonir-hq-stage1-gpt4-gate-review.md`](/home/rbw/repo/pylate/output/reasonir-hq-stage1-gpt4-gate-review.md)
+- full 12-task comparison: [`reasonir-hq-full-gpt4-review.md`](/home/rbw/repo/pylate/output/reasonir-hq-full-gpt4-review.md)
+
+So:
+
+- if your target regime is raw queries, continue with the HQ Stage 2 sweep below
+- if your target regime is GPT-4 reasoning traces, the mixed baseline is now the best result and the next step is the mixed `bs2048` lower-LR sweep
 
 ### Stage 2
 
@@ -394,7 +511,8 @@ uv run python examples/evaluation/bright_reasonir.py \
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-raw.json
 ```
 
@@ -410,11 +528,13 @@ uv run python examples/evaluation/bright_reasonir.py \
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-gpt4.json
 ```
 
 Operational note: exhaustive BRIGHT MaxSim scoring is expensive. On the 3090, the largest tasks such as `earth_science` and `stackoverflow` were slow enough that moving the sweep to a 5090 was judged worthwhile.
+For large runs on this host, prefer `/mnt/ml_models/cache/pylate-bright-cache` over `/tmp` and keep `--cleanup-document-cache` enabled so model-specific BRIGHT shards are removed even after an interrupted run.
 
 ### NanoBEIR sweep
 

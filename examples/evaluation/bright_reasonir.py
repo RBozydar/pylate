@@ -60,6 +60,11 @@ CODING_TASKS = ["leetcode", "pony", "aops"]
 THEOREM_TASKS = ["theoremqa_questions", "theoremqa_theorems"]
 DEFAULT_WANDB_PROJECT = "ColBERT-Zero"
 DEFAULT_WANDB_ENTITY = "rbw"
+DEFAULT_BRIGHT_CACHE_DIR = (
+    "/mnt/ml_models/cache/pylate-bright-cache"
+    if Path("/mnt/ml_models/cache").is_dir()
+    else "/tmp/pylate-bright-cache"
+)
 
 # Query lengths explicitly listed in the Reason-ModernColBERT model card for the
 # GPT-4 reasoning-trace setup.
@@ -172,8 +177,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="/tmp/pylate-bright-cache",
-        help="Hugging Face datasets cache directory.",
+        default=DEFAULT_BRIGHT_CACHE_DIR,
+        help=(
+            "Hugging Face datasets cache directory. Defaults to "
+            f"{DEFAULT_BRIGHT_CACHE_DIR} on this host."
+        ),
     )
     parser.add_argument(
         "--output_json",

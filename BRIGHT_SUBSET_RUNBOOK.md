@@ -62,7 +62,8 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run python examples/evaluation/bright_
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-base-colbert-zero-raw-partial.json
 ```
 
@@ -78,7 +79,8 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run python examples/evaluation/bright_
   --document_batch_size 128 \
   --corpus_chunk_size 1024 \
   --top_k 1000 \
-  --cache_dir /tmp/pylate-bright-cache \
+  --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+  --cleanup-document-cache \
   --output_json /home/rbw/repo/pylate/output/bright-reasonir-full-gpu-raw-partial.json
 ```
 
@@ -133,13 +135,13 @@ Disable eval logging with:
 REPORT_TO=none ./scripts/reasonir_hq_bright_subset_eval.sh
 ```
 
-The wrapper scripts do not force Hugging Face offline mode. They will fetch missing BRIGHT data into cache when needed. For cached-only reruns, prefix either wrapper with:
+The wrapper scripts do not force Hugging Face offline mode. They will fetch missing BRIGHT data into cache when needed. On this machine they now default to `/mnt/ml_models/cache/pylate-bright-cache` when that path exists, and otherwise fall back to `/tmp/pylate-bright-cache`. For cached-only reruns, prefix either wrapper with:
 
 ```bash
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 CLEANUP_DOCUMENT_CACHE=0
 ```
 
-By default the wrapper cleans up the model-specific BRIGHT document cache after each eval run. That keeps one-off pilot comparisons from leaving behind tens of GiB of document shards per model. Set `CLEANUP_DOCUMENT_CACHE=0` if you want to retain those caches for reuse.
+By default the wrapper cleans up the model-specific BRIGHT document cache after each eval run. That keeps one-off pilot comparisons from leaving behind tens of GiB of document shards per model, especially when using `/tmp`. Set `CLEANUP_DOCUMENT_CACHE=0` if you want to retain those caches for reuse.
 
 ## Resume Behavior
 
@@ -158,8 +160,9 @@ Wrapper script:
 
 ## Cache Behavior
 
-The BRIGHT runner stores per-model, per-task document embedding shards under:
+The BRIGHT runner stores per-model, per-task document embedding shards under the chosen cache root, for example:
 
+- `/mnt/ml_models/cache/pylate-bright-cache/bright_doc_emb`
 - `/tmp/pylate-bright-cache/bright_doc_emb`
 
 Important implications:

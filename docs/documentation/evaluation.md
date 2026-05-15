@@ -178,7 +178,8 @@ uv run python examples/evaluation/bright_reasonir.py \
     --document_batch_size 128 \
     --corpus_chunk_size 1024 \
     --top_k 1000 \
-    --cache_dir /tmp/pylate-bright-cache \
+    --cache_dir /mnt/ml_models/cache/pylate-bright-cache \
+    --cleanup-document-cache \
     --output_json output/bright-results.json
 ```
 
@@ -200,6 +201,8 @@ The BRIGHT runner:
 - resumes from `--output_json` and skips already-finished tasks on rerun
 - accepts task subsets via `--tasks biology,earth_science,...`
 - can log per-task metrics plus final summary to W&B when `--report-to wandb` is enabled
+
+For large BRIGHT runs on this machine, prefer `/mnt/ml_models/cache/pylate-bright-cache` over `/tmp` and keep `--cleanup-document-cache` enabled so model-specific document shards are removed in `finally`, including after interrupted or failed runs.
 
 For the current ReasonIR HQ shell-script pilots, the repo also includes wrappers that evaluate either:
 
