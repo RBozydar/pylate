@@ -10,9 +10,9 @@ SCRIPT_PATH="${SCRIPT_PATH:-examples/train/ColBERT-zero/reason_moderncolbert.py}
 VALIDATION_SIZE="${VALIDATION_SIZE:-0.01}"
 WARMUP_RATIO="${WARMUP_RATIO:-0.1}"
 MINI_BATCH_SIZE="${MINI_BATCH_SIZE:-32}"
-NUM_WORKERS="${NUM_WORKERS:-4}"
+NUM_WORKERS="${NUM_WORKERS:-8}"
 LOGGING_STEPS="${LOGGING_STEPS:-1}"
-SAVE_STEPS="${SAVE_STEPS:-25}"
+SAVE_STEPS="${SAVE_STEPS:-5}"
 EVAL_STEPS="${EVAL_STEPS:-$SAVE_STEPS}"
 SAVE_TOTAL_LIMIT="${SAVE_TOTAL_LIMIT:-20}"
 REPORT_TO="${REPORT_TO:-wandb}"
@@ -53,7 +53,9 @@ run_sweep_entry() {
 }
 
 # Roughly equalize examples seen (~102k) while scaling LR with batch size.
-run_sweep_entry "hq-batch-bs256-lr1e5-temp1" 256 400 1e-5
-run_sweep_entry "hq-batch-bs512-lr2e5-temp1" 512 200 2e-5
-run_sweep_entry "hq-batch-bs1024-lr4e5-temp1" 1024 100 4e-5
-run_sweep_entry "hq-batch-bs2048-lr8e5-temp1" 2048 50 8e-5
+# run_sweep_entry "hq-batch-bs256-lr1e5-temp1" 256 400 1e-5
+# run_sweep_entry "hq-batch-bs512-lr2e5-temp1" 512 200 2e-5
+# run_sweep_entry "hq-batch-bs1024-lr4e5-temp1" 1024 100 4e-5
+# run_sweep_entry "hq-batch-bs2048-lr8e5-temp1" 2048 50 8e-5
+run_sweep_entry "hq-batch-bs4096-lr1e4-temp1" 4096 25 1e-4
+run_sweep_entry "hq-batch-bs8192-lr3.2e4-temp1" 8192 25 3.2e-4

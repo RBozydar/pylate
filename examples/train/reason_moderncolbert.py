@@ -45,8 +45,8 @@ def main():
     # Define training parameters
     num_train_epochs = 3
     lr = 1e-5
-    batch_size = 256
-    mini_batch_size = 32
+    batch_size = 16
+    mini_batch_size = 4
     model_name = "lightonai/GTE-ModernColBERT-v1"
     model_shortname = model_name.split("/")[-1]
 
@@ -66,7 +66,7 @@ def main():
     train_loss = losses.CachedContrastive(
         model=model,
         mini_batch_size=mini_batch_size,
-        gather_across_devices=True,
+        gather_across_devices=False,
         temperature=1.0,
     )
 
